@@ -1,12 +1,14 @@
-import { useState, type ReactNode } from "react";
-import { Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { Alert, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as Device from "expo-device";
 import * as Sharing from "expo-sharing";
+import { useRouter } from "expo-router";
 import { File, Paths } from "expo-file-system";
 import { Card, PillButton, SectionTitle, TopBar, styles as ui } from "@/components/ui";
 import { appVersion, describeError, ping, uploadLogs } from "@/lib/api";
+import { authenticateBiometric, biometricKind, disableLock } from "@/lib/lock";
 import { collectLogs, logger, recentLines, sessionId } from "@/lib/log";
 import { debugSummary, exportJson, updateSettings, useStore, wipeAll } from "@/lib/store";
 import { colors, radius } from "@/lib/theme";
@@ -15,6 +17,28 @@ const log = logger("settings");
 
 export default function Settings() {
   const settings = useStore((s) => s.settings);
+  const router = useRouter();
+  const [bioKind, setBioKind] = useState<"faceid" | "touchid" | null>(null);
+  useEffect(() => {
+    void biometricKind().then(setBioKind);
+  }, []);
+  const bioName = bioKind === "touchid" ? "Touch ID" : "Face ID";
+
+  const toggleLock = (on: boolean) => {
+    if (on) router.push("/pin");
+    else
+      Alert.alert("关闭密码锁？", "打开 App 将不再需要密码。", [
+        { text: "取消", style: "cancel" },
+        { text: "关闭", style: "destructive", onPress: () => void disableLock() },
+      ]);
+  };
+
+  const toggleBio = async (on: boolean) => {
+    if (!on) return updateSettings({ lockBiometrics: false });
+    // Confirm it actually works (and trigger the iOS permission prompt) before relying on it.
+    if (await authenticateBiometric()) updateSettings({ lockBiometrics: true });
+    else Alert.alert(`${bioName} 未通过`, "没有开启。");
+  };
   const [server, setServer] = useState(settings.server);
   const [token, setToken] = useState(settings.token);
   const [name, setName] = useState(settings.name);
@@ -101,6 +125,29 @@ export default function Settings() {
         <SectionTitle icon="person-outline" title="称呼" />
         <Field value={name} onChange={setName} placeholder="首页问候用的名字（可空）" />
 
+        <SectionTitle icon="lock-closed-outline" title="隐私锁" />
+        <Card style={{ gap: 14 }}>
+          <ToggleRow title="密码锁" subtitle="打开 App 时需要 4 位密码" value={settings.lockEnabled} onChange={toggleLock} />
+          {settings.lockEnabled ? (
+            <>
+              {bioKind ? <ToggleRow title={`使用 ${bioName}`} subtitle="解锁时优先用生物识别" value={settings.lockBiometrics} onChange={(v) => void toggleBio(v)} /> : null}
+              <View>
+                <Text style={[ui.title, { fontSize: 15 }]}>离开后多久上锁</Text>
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                  {([[0, "立即"], [60, "1 分钟"], [300, "5 分钟"]] as const).map(([v, label]) => (
+                    <Pressable key={v} onPress={() => updateSettings({ lockDelaySec: v })} style={{ flex: 1, height: 36, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: settings.lockDelaySec === v ? colors.primary : colors.bg, borderWidth: 1, borderColor: settings.lockDelaySec === v ? colors.primary : colors.border }}>
+                      <Text style={{ color: settings.lockDelaySec === v ? "#fff" : colors.text, fontSize: 13 }}>{label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+              <Pressable onPress={() => router.push("/pin")}>
+                <Text style={{ color: colors.primaryDark, fontWeight: "600" }}>修改密码</Text>
+              </Pressable>
+            </>
+          ) : null}
+        </Card>
+
         <SectionTitle icon="server-outline" title="服务器" />
         <View style={{ gap: 10 }}>
           <Field value={server} onChange={setServer} placeholder="https://voice.gugenzzz.top" />
@@ -147,6 +194,18 @@ export default function Settings() {
 
         <Text style={[ui.faint, { textAlign: "center", marginTop: 30 }]}>Murmur {appVersion} · session {sessionId}</Text>
       </ScrollView>
+    </View>
+  );
+}
+
+function ToggleRow({ title, subtitle, value, onChange }: { title: string; subtitle: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <View style={{ flex: 1 }}>
+        <Text style={[ui.title, { fontSize: 15 }]}>{title}</Text>
+        <Text style={[ui.faint, { marginTop: 2 }]}>{subtitle}</Text>
+      </View>
+      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.primary, false: colors.border }} />
     </View>
   );
 }

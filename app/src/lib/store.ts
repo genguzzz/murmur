@@ -54,6 +54,9 @@ export interface Settings {
   token: string;
   language: "auto" | "zh" | "en";
   name: string;
+  lockEnabled: boolean;
+  lockBiometrics: boolean;
+  lockDelaySec: number;
 }
 
 export interface InsightsCache {
@@ -72,7 +75,7 @@ interface State {
 const DEFAULT_STATE: State = {
   entries: [],
   chats: [],
-  settings: { server: api.DEFAULT_SERVER, token: "", language: "auto", name: "" },
+  settings: { server: api.DEFAULT_SERVER, token: "", language: "auto", name: "", lockEnabled: false, lockBiometrics: false, lockDelaySec: 60 },
 };
 
 let state: State = DEFAULT_STATE;
@@ -102,7 +105,8 @@ export function newId(): string {
 
 // ---------- persistence ----------
 
-export async function loadState(): Promise<void> {
+// `beforeReady` runs after the state is read but before screens render (used to lock first).
+export async function loadState(beforeReady?: () => void): Promise<void> {
   try {
     let raw: string | null = null;
     if (isWeb) raw = globalThis.localStorage?.getItem(STORAGE_KEY) ?? null;
@@ -119,8 +123,9 @@ export async function loadState(): Promise<void> {
   } catch (e) {
     log.error("state load failed", e);
   }
-  loaded = true;
   api.configureApi(state.settings);
+  beforeReady?.();
+  loaded = true;
   emit();
 }
 

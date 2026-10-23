@@ -33,6 +33,8 @@ const config: ExpoConfig = {
   web: { favicon: "./assets/favicon.png" },
   plugins: [
     "expo-router",
+    "expo-secure-store",
+    ["expo-local-authentication", { faceIDPermission: "Murmur 用面容 ID 解锁你的日记。" }],
     [
       "expo-audio",
       {
