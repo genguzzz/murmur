@@ -1,0 +1,15 @@
+[Unit]
+Description=Murmur voice journal backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/voicememo/app
+EnvironmentFile=/opt/voicememo/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/local/bin/node src/server.ts
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
