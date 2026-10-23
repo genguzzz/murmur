@@ -10,6 +10,7 @@ import { startLockWatcher, useLocked } from "@/lib/lock";
 import { appVersion } from "@/lib/api";
 import { flush, installGlobalHandlers, logger, pruneLogs, sessionId } from "@/lib/log";
 import { loadState, resumePending, useLoaded, useStore } from "@/lib/store";
+import { logRunningUpdate, startForegroundChecks } from "@/lib/updates";
 import { colors } from "@/lib/theme";
 
 const log = logger("app");
@@ -20,6 +21,8 @@ log.info("launch", {
   os: `${Platform.OS} ${Platform.Version}`,
   device: `${Device.manufacturer ?? ""} ${Device.modelName ?? ""}`.trim(),
 });
+logRunningUpdate();
+startForegroundChecks();
 void loadState(startLockWatcher).then(() => {
   pruneLogs();
   resumePending();

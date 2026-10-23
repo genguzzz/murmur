@@ -25,6 +25,18 @@ npx tsc --noEmit && npx expo lint
 
 Settings → 服务器 takes the backend URL and the access token. Settings → 调试 → 上传日志 sends recent log files (operations and errors only, no journal text) and returns an id.
 
+## Over-the-air updates
+
+JS/TypeScript-only changes skip the 15–20 min Mac build:
+
+```sh
+./scripts/ota.sh "修复：…"     # ~1 min on Linux: expo export → upload to voice.gugenzzz.top/updates
+```
+
+The backend implements the [Expo Updates protocol v1](https://docs.expo.dev/technical-specs/expo-updates-1/) (`GET /updates/manifest`, assets served by nginx under `/updates/assets/`). Phones download the update on launch or when returning to the foreground; the home screen offers a restart to apply it. Settings → 版本 shows whether the app runs embedded code or which OTA update.
+
+Updates only reach binaries with the same `RUNTIME_VERSION` (app/app.config.ts). When native code changes — new or upgraded native packages, config plugins, permissions, Expo SDK upgrades — bump it and cut an IPA with `scripts/release.sh`; `ota.sh` refuses when it sees dependency or app config changes since the last release tag. To roll back, publish the previous code again as a new update.
+
 ## Server
 
 Environment (`/opt/voicememo/.env` on the host, never committed):

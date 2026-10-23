@@ -9,6 +9,7 @@ import { config } from "./config.ts";
 import { transcribe, UpstreamError } from "./groq.ts";
 import { analyzeEntry, chat, insightsFor, RefusalError } from "./claude.ts";
 import { publishIpa, PublishConflict } from "./publish.ts";
+import { listUpdates, manifestResponse, storeUpdate } from "./updates.ts";
 
 const app = Fastify({
   // JSON lines to journald: `journalctl -u murmur -o cat | grep <reqId>`
@@ -207,6 +208,43 @@ app.post("/admin/publish", async (req) => {
   const out = await publishIpa({ ...meta, force: meta.force === "1", ipa, icon });
   req.log.info({ ...meta, bytes: ipa.length, ...out }, "published");
   return out;
+});
+
+// ---------- Expo Updates (OTA) ----------
+
+// Public: the app's expo-updates client polls this on launch.
+app.get("/updates/manifest", async (req, reply) => {
+  const h = req.headers;
+  const platform = String(h["expo-platform"] ?? "");
+  const runtimeVersion = String(h["expo-runtime-version"] ?? "");
+  const current = typeof h["expo-current-update-id"] === "string" ? h["expo-current-update-id"] : undefined;
+  reply.header("expo-protocol-version", "1").header("expo-sfv-version", "0").header("cache-control", "private, max-age=0");
+  if (platform !== "ios" && platform !== "android") return reply.code(400).send({ error: "bad expo-platform" });
+  if (String(h["expo-protocol-version"] ?? "0") !== "1") return reply.code(406).send({ error: "protocol v1 only" });
+  const res = await manifestResponse({ platform, runtimeVersion, currentUpdateId: current, accept: String(h.accept ?? "") });
+  req.log.info({ platform, runtimeVersion, current, served: res?.updateId ?? null, embedded: h["expo-embedded-update-id"] }, "updates manifest");
+  if (!res) return reply.code(204).send();
+  return reply.type(res.contentType).send(res.body);
+});
+
+// CI/tutu → publish an OTA update (tar.gz of `expo export` + expoConfig.json).
+app.post("/admin/updates", async (req) => {
+  const fields: Record<string, string> = {};
+  let tarball: Buffer | null = null;
+  for await (const part of req.parts()) {
+    if (part.type === "file") tarball = await part.toBuffer();
+    else fields[part.fieldname] = String(part.value);
+  }
+  const meta = z.object({ runtimeVersion: z.string(), message: z.string().default(""), commit: z.string().default("") }).parse(fields);
+  if (!tarball) throw Object.assign(new Error("missing bundle"), { statusCode: 400 });
+  const rec = await storeUpdate({ ...meta, tarball });
+  req.log.info({ id: rec.id, runtimeVersion: rec.runtimeVersion, platforms: Object.keys(rec.manifests), bytes: tarball.length, message: rec.message }, "update published");
+  return { id: rec.id, createdAt: rec.createdAt, platforms: Object.keys(rec.manifests) };
+});
+
+app.get("/admin/updates", async (req) => {
+  const { runtimeVersion } = z.object({ runtimeVersion: z.string() }).parse(req.query);
+  return (await listUpdates(runtimeVersion)).map((u) => ({ id: u.id, createdAt: u.createdAt, message: u.message, commit: u.commit, platforms: Object.keys(u.manifests) }));
 });
 
 app.get("/", async (_req: FastifyRequest, reply: FastifyReply) => reply.send("murmur"));

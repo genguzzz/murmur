@@ -11,6 +11,7 @@ import { QUICK_PROMPTS } from "@/lib/prompts";
 import { sortedEntries, useStore } from "@/lib/store";
 import { greeting, shortDate, timeAgo } from "@/lib/format";
 import { colors } from "@/lib/theme";
+import { restartToApply, useUpdates } from "@/lib/updates";
 
 export default function Home() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function Home() {
   const rawEntries = useStore((s) => s.entries);
   const settings = useStore((s) => s.settings);
   const entries = useMemo(() => sortedEntries(rawEntries), [rawEntries]);
+  const { isUpdatePending } = useUpdates();
 
   const latest = entries[0];
   const followUp = entries.find((e) => e.status === "done" && e.followUp && !e.followUpDone);
@@ -56,6 +58,14 @@ export default function Home() {
             {settings.name ? `，${settings.name}` : ""}
           </Text>
         </View>
+
+        {isUpdatePending ? (
+          <Card style={{ marginTop: 18, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.primarySoft }} onPress={() => void restartToApply()}>
+            <Ionicons name="sparkles" size={18} color={colors.primaryDark} />
+            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>新版本已就绪，点这里重启生效</Text>
+            <Ionicons name="refresh" size={18} color={colors.primaryDark} />
+          </Card>
+        ) : null}
 
         {!settings.token ? (
           <Card style={{ marginTop: 18, borderWidth: 1, borderColor: colors.primary }} onPress={() => go("/settings")}>

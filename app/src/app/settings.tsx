@@ -11,6 +11,8 @@ import { appVersion, describeError, ping, uploadLogs } from "@/lib/api";
 import { authenticateBiometric, biometricKind, disableLock } from "@/lib/lock";
 import { collectLogs, logger, recentLines, sessionId } from "@/lib/log";
 import { debugSummary, exportJson, updateSettings, useStore, wipeAll } from "@/lib/store";
+import * as Updates from "expo-updates";
+import { checkAndFetch, restartToApply, runningLabel, updatesEnabled } from "@/lib/updates";
 import { colors, radius } from "@/lib/theme";
 
 const log = logger("settings");
@@ -47,6 +49,19 @@ export default function Settings() {
   const [note, setNote] = useState("");
   const [lastLogId, setLastLogId] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  const checkUpdate = async () => {
+    setChecking(true);
+    const ready = await checkAndFetch("manual");
+    setChecking(false);
+    if (ready)
+      Alert.alert("新版本已下载", "重启后生效。", [
+        { text: "稍后", style: "cancel" },
+        { text: "立即重启", onPress: () => void restartToApply() },
+      ]);
+    else Alert.alert("已是最新", `当前运行：${runningLabel()}`);
+  };
 
   const dirty = server !== settings.server || token !== settings.token || name !== settings.name;
 
@@ -192,7 +207,21 @@ export default function Settings() {
           <Row icon="trash-outline" title="清空所有数据" subtitle="删除记录、录音和对话" onPress={wipe} danger />
         </View>
 
-        <Text style={[ui.faint, { textAlign: "center", marginTop: 30 }]}>Murmur {appVersion} · session {sessionId}</Text>
+        <SectionTitle icon="information-circle-outline" title="版本" />
+        <Card style={{ gap: 6 }}>
+          <Text style={ui.body}>App {appVersion}</Text>
+          <Text style={ui.faint}>
+            {updatesEnabled
+              ? Updates.isEmbeddedLaunch
+                ? "运行的是安装包自带的代码"
+                : `运行热更新 ${Updates.updateId?.slice(0, 8)} · ${Updates.createdAt?.toLocaleString() ?? ""}`
+              : "开发模式，热更新未启用"}
+          </Text>
+          <Text style={ui.faint}>运行时版本 {Updates.runtimeVersion ?? "-"}</Text>
+          {updatesEnabled ? <PillButton label="检查更新" icon="cloud-download-outline" variant="ghost" onPress={() => void checkUpdate()} loading={checking} style={{ marginTop: 6, height: 44 }} /> : null}
+        </Card>
+
+        <Text style={[ui.faint, { textAlign: "center", marginTop: 30 }]}>session {sessionId}</Text>
       </ScrollView>
     </View>
   );

@@ -14,6 +14,9 @@ export const config = {
   // Static software-source root served by nginx at SOURCE_BASE.
   sourceRoot: process.env.SOURCE_ROOT ?? "/var/www/apps",
   sourceBase: process.env.SOURCE_BASE ?? "https://apps.gugenzzz.top",
+  // Expo Updates: bundles on disk, assets served by nginx under UPDATES_BASE/assets/.
+  updatesDir: process.env.UPDATES_DIR ?? "/opt/voicememo/updates",
+  updatesBase: process.env.UPDATES_BASE ?? "https://voice.gugenzzz.top/updates",
   appToken: required("APP_TOKEN"),
   adminToken: required("ADMIN_TOKEN"),
   groqKey: required("GROQ_API_KEY"),

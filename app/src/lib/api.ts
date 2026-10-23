@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import * as Application from "expo-application";
 import { File, Paths } from "expo-file-system";
 import { logger } from "./log";
+import { runningLabel } from "./updates";
 
 const log = logger("api");
 
@@ -17,7 +18,7 @@ export function hasToken() {
   return token.length > 0;
 }
 
-export const appVersion = `${Application.nativeApplicationVersion ?? "dev"}(${Application.nativeBuildVersion ?? "0"})`;
+export const appVersion = `${Application.nativeApplicationVersion ?? "dev"}(${Application.nativeBuildVersion ?? "0"}) ${runningLabel()}`;
 
 export class ApiError extends Error {
   status: number;
