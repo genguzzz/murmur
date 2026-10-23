@@ -8,7 +8,7 @@ import { z } from "zod";
 import { config } from "./config.ts";
 import { transcribe, UpstreamError } from "./groq.ts";
 import { analyzeEntry, chat, insightsFor, RefusalError } from "./claude.ts";
-import { publishIpa } from "./publish.ts";
+import { publishIpa, PublishConflict } from "./publish.ts";
 
 const app = Fastify({
   // JSON lines to journald: `journalctl -u murmur -o cat | grep <reqId>`
@@ -66,6 +66,10 @@ app.setErrorHandler((err: unknown, req, reply) => {
   if (err instanceof z.ZodError) {
     req.log.warn({ issues: err.issues }, "bad request body");
     return reply.code(400).send({ error: "bad_request", detail: err.issues.slice(0, 5) });
+  }
+  if (err instanceof PublishConflict) {
+    req.log.warn({ err: err.message }, "publish rejected");
+    return reply.code(409).send({ error: "version_conflict", detail: err.message });
   }
   if (err instanceof RefusalError) {
     req.log.warn({ err: err.message }, "claude refusal");
@@ -192,13 +196,15 @@ app.post("/admin/publish", async (req) => {
     .object({
       bundleId: z.string(),
       version: z.string(),
+      build: z.string().default("0"),
       name: z.string(),
       minIos: z.string().default("15.1"),
       notes: z.string().default(""),
+      force: z.string().optional(),
     })
     .parse(fields);
   if (!ipa) throw Object.assign(new Error("missing ipa"), { statusCode: 400 });
-  const out = await publishIpa({ ...meta, ipa, icon });
+  const out = await publishIpa({ ...meta, force: meta.force === "1", ipa, icon });
   req.log.info({ ...meta, bytes: ipa.length, ...out }, "published");
   return out;
 });

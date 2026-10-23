@@ -1,13 +1,16 @@
 import type { ExpoConfig } from "expo/config";
 
-// CI sets BUILD_NUMBER (GitHub run number) so every IPA has a new version in the source.
+import pkg from "./package.json";
+
+// The release version comes from package.json (bumped by scripts/release.sh);
+// CI sets BUILD_NUMBER (GitHub run number) as the build number.
 const build = process.env.BUILD_NUMBER ?? "0";
 
 const config: ExpoConfig = {
   name: "Murmur",
   slug: "murmur",
   scheme: "murmur",
-  version: `0.1.${build}`,
+  version: pkg.version,
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",

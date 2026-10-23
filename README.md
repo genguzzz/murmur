@@ -4,7 +4,15 @@ A personal voice journal, inspired by Lound. Talk, and it turns the ramble into 
 
 - **app/** — Expo (React Native, TypeScript, Expo Router). iOS + Android from one codebase. Recordings and entries stay on the device.
 - **server/** — Node 22 + Fastify (TypeScript, run directly with Node's type stripping). Groq Whisper for transcription, Claude for analysis/chat. Audio is processed in memory and never stored.
-- **.github/workflows/ios.yml** — builds an unsigned IPA on a GitHub-hosted Mac and publishes it to a self-hosted 全能签/ESign/AltStore software source. Signing happens on the phone.
+- **.github/workflows/ios.yml** — builds an unsigned IPA on a GitHub-hosted Mac. Pushes to `main` only build; a `vX.Y.Z` tag also creates a GitHub Release and publishes that version to a self-hosted 全能签/ESign/AltStore software source. Signing happens on the phone.
+
+## Releasing
+
+```sh
+./scripts/release.sh 0.3.0 "新增：…；修复：…"
+```
+
+Bumps `app/package.json` (the single source of the app version), commits, pushes an annotated tag whose message becomes the release notes. The source keeps the last 10 versions per app (`versions` array, newest first) and rejects a version lower than, or equal to, the latest one. The build number (`CFBundleVersion`) is the CI run number.
 
 ## App
 
