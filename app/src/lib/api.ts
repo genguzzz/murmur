@@ -39,7 +39,8 @@ function rid() {
 export function describeError(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 401) return "访问令牌不对，请到设置里检查";
-    if (e.status === 0) return "连不上服务器，请检查网络";
+    if (e.code === "timeout") return "请求超时，请检查网络";
+    if (e.status === 0) return `请求没发出去：${e.message}`;
     if (e.status === 429) return "请求太频繁，稍后再试";
     if (e.code === "groq_error") return "语音识别服务出错了";
     if (e.code.startsWith("claude")) return "AI 服务暂时出错了";
@@ -71,8 +72,9 @@ async function request<T>(path: string, init: { method?: string; json?: unknown;
     });
   } catch (e) {
     const aborted = controller.signal.aborted;
-    log.error(`✗ ${path} network`, { rid: id, ms: Date.now() - started, aborted, err: e });
-    throw new ApiError(0, aborted ? "timeout" : "network", aborted ? "请求超时" : "网络错误", id);
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    log.error(`✗ ${path} failed before response`, { rid: id, ms: Date.now() - started, aborted, err: e });
+    throw new ApiError(0, aborted ? "timeout" : "network", aborted ? "请求超时" : detail, id);
   } finally {
     clearTimeout(timer);
   }
@@ -105,8 +107,9 @@ export async function transcribe(fileUri: string, language: string): Promise<Tra
     const blob = await (await fetch(fileUri)).blob();
     form.append("audio", blob, "audio.webm");
   } else {
-    // React Native's FormData accepts {uri,name,type} file descriptors.
-    form.append("audio", { uri: fileUri, name: "audio.m4a", type: "audio/m4a" } as unknown as Blob);
+    // Expo's global fetch (expo/fetch) can't send RN-style {uri} parts; an
+    // expo-file-system File implements bytes() and is encoded as a file part.
+    form.append("audio", new File(fileUri) as unknown as Blob, "audio.m4a");
   }
   form.append("language", language);
   return request<Transcript>("/v1/transcribe", { method: "POST", form, timeoutMs: 180_000, tag: "transcribe" });
@@ -166,7 +169,7 @@ export async function uploadLogs(log: string, fields: Record<string, string>) {
     if (file.exists) file.delete();
     file.create();
     await file.write(log);
-    form.append("log", { uri: file.uri, name: "app.log", type: "text/plain" } as unknown as Blob);
+    form.append("log", file as unknown as Blob, "app.log");
   }
   return request<{ id: string }>("/v1/logs", { method: "POST", form, timeoutMs: 60_000, tag: "logs" });
 }
