@@ -146,9 +146,7 @@ async function save() {
       if (tmp.exists) tmp.delete();
       tmp.create();
       await tmp.write(raw);
-      const f = dataFile();
-      if (f.exists) f.delete();
-      tmp.move(f);
+      tmp.moveSync(dataFile(), { overwrite: true });
     }
   } catch (e) {
     log.error("state save failed", e);
@@ -258,6 +256,11 @@ export async function processEntry(id: string): Promise<void> {
     let e = getEntry(id);
     if (!e) return;
     if (e.kind === "voice" && !e.rawText) {
+      if (!isWeb && !audioFile(e.audioFile!).exists) {
+        log.error("audio file missing", { id, file: e.audioFile });
+        patchEntry(id, { status: "failed", error: "录音文件丢失（旧版本的问题），这条只能删除" });
+        return;
+      }
       patchEntry(id, { status: "transcribing", error: undefined });
       const uri = isWeb ? e.audioFile! : audioFile(e.audioFile!).uri;
       const t = await api.transcribe(uri, state.settings.language);

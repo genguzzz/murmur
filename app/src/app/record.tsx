@@ -118,10 +118,14 @@ export default function Record() {
       if (Platform.OS !== "web") {
         const name = `${id}.m4a`;
         const from = new File(src);
-        from.copy(audioFile(name));
-        from.delete();
+        const srcSize = from.size;
+        // moveSync: the async copy()/move() return promises, and deleting the source
+        // before the copy finished lost every recording in 0.2.0.
+        from.moveSync(audioFile(name), { overwrite: true });
+        const dest = audioFile(name);
+        log.info("audio stored", { name, srcSize, size: dest.exists ? dest.size : -1 });
+        if (!dest.exists || dest.size === 0) throw new Error("录音文件保存失败");
         stored = name;
-        log.info("audio stored", { name, size: audioFile(name).size });
       }
       createVoiceEntry({ id, audioFile: stored, durationSec, prompt: params.prompt, followUpOf: params.followUpOf });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
