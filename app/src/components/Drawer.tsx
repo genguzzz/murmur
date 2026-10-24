@@ -150,17 +150,17 @@ function DrawerRow({ icon, label, hint, onPress }: Item & { onPress: () => void 
 // Wraps the tab screens: a rightward swipe that starts near the left edge pulls the
 // drawer out. Claimed in the capture phase on move only, so taps and vertical
 // scrolls inside the screens are untouched, and nothing overlays the content.
-const EDGE = 72; // px from the left where a swipe may start
+const EDGE = 36; // px from the left where a swipe may start (72 felt too eager)
 export function DrawerGestureArea({ children }: { children: ReactNode }) {
   const pan = useMemo(
     () =>
       PanResponder.create({
         // x0 is only filled in after grant, so derive where the finger started.
-        onMoveShouldSetPanResponderCapture: (_, g) => g.moveX - g.dx < EDGE && g.dx > 8 && g.dx > Math.abs(g.dy) * 1.2,
+        onMoveShouldSetPanResponderCapture: (_, g) => g.moveX - g.dx < EDGE && g.dx > 10 && g.dx > Math.abs(g.dy) * 1.5,
         onPanResponderTerminationRequest: () => false,
         onPanResponderMove: (_, g) => progress.setValue(Math.max(0, Math.min(1, g.dx / WIDTH))),
         onPanResponderRelease: (_, g) => {
-          if (g.dx > WIDTH * 0.18 || g.vx > 0.25) {
+          if (g.dx > WIDTH * 0.25 || g.vx > 0.35) {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             openDrawer();
             animateTo(1);
