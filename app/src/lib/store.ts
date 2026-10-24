@@ -22,6 +22,7 @@ export interface Entry {
   error?: string;
   audioFile?: string; // file name inside audio/
   durationSec?: number;
+  waveform?: number[]; // 0..1 loudness bars for the player (from recording, or learned on first play)
   prompt?: string; // question the user was answering
   followUpOf?: string; // entry id whose follow-up this answers
   rawText?: string;
@@ -98,6 +99,7 @@ export interface Settings {
   checkins: CheckinPrefs;
   todoAllDayTime: string; // reminder time for to-dos with a date but no time
   analytics: boolean; // upload usage events (no content) to the server
+  playbackRate: number; // last speed chosen in the player
   memberSince?: string;
 }
 
@@ -130,6 +132,7 @@ const DEFAULT_STATE: State = {
     checkins: { morning: { enabled: false, time: "08:30" }, evening: { enabled: false, time: "21:30" }, remember: false },
     todoAllDayTime: "09:00",
     analytics: true,
+    playbackRate: 1,
   },
 };
 
@@ -278,7 +281,7 @@ export function sortedEntries(entries: Entry[]): Entry[] {
   return [...entries].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export function createVoiceEntry(opts: { id: string; audioFile: string; durationSec: number; prompt?: string; followUpOf?: string; mode?: "todo" }): Entry {
+export function createVoiceEntry(opts: { id: string; audioFile: string; durationSec: number; waveform?: number[]; prompt?: string; followUpOf?: string; mode?: "todo" }): Entry {
   const entry: Entry = { ...opts, createdAt: new Date().toISOString(), kind: "voice", status: "transcribing" };
   setState((s) => ({ ...s, entries: [entry, ...s.entries] }));
   log.info("voice entry created", { id: entry.id, durationSec: opts.durationSec, prompt: !!opts.prompt });
@@ -310,6 +313,11 @@ export function deleteEntry(id: string) {
   }
   setState((s) => ({ ...s, entries: s.entries.filter((x) => x.id !== id) }));
   log.info("entry deleted", { id });
+}
+
+export function setWaveform(id: string, waveform: number[]) {
+  patchEntry(id, { waveform });
+  log.info("waveform saved", { id, bars: waveform.length });
 }
 
 export function markFollowUpDone(id: string) {

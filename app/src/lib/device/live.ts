@@ -69,14 +69,16 @@ export function endLiveRecording(saved: boolean) {
 
 // ---------- playback ----------
 
-export function livePlayback(opts: { title: string; subtitle: string; positionSec: number; durationSec: number; playing: boolean }) {
+// The widget's clock runs in wall time, so at 1.5× the timeline is scaled to match.
+export function livePlayback(opts: { title: string; subtitle: string; positionSec: number; durationSec: number; playing: boolean; rate?: number }) {
+  const rate = opts.rate && opts.rate > 0 ? opts.rate : 1;
   return push("play", {
     mode: opts.playing ? "playing" : "playbackPaused",
     title: opts.title,
-    subtitle: opts.subtitle,
-    anchor: nowSec() - opts.positionSec,
-    elapsed: opts.positionSec,
-    duration: opts.durationSec,
+    subtitle: rate === 1 ? opts.subtitle : `${opts.subtitle} · ${rate}×`,
+    anchor: nowSec() - opts.positionSec / rate,
+    elapsed: opts.positionSec / rate,
+    duration: opts.durationSec / rate,
   });
 }
 

@@ -46,6 +46,8 @@ export default function Record() {
   const [phase, setPhase] = useState<Phase>("starting");
   const [opener] = useState(() => RECORD_OPENERS[Math.floor(Math.random() * RECORD_OPENERS.length)]);
   const done = useRef(false);
+  // Loudness while recording (one value per ~100 ms poll), saved as the entry's waveform.
+  const levels = useRef<number[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +88,10 @@ export default function Record() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (phase === "recording") levels.current.push(meterLevel(state.metering));
+  }, [state.durationMillis, state.metering, phase]);
 
   useEffect(() => {
     if (state.mediaServicesDidReset) log.warn("media services reset during recording", { ms: state.durationMillis });
@@ -134,7 +140,7 @@ export default function Record() {
         if (!dest.exists || dest.size === 0) throw new Error("录音文件保存失败");
         stored = name;
       }
-      createVoiceEntry({ id, audioFile: stored, durationSec, prompt: params.prompt, followUpOf: params.followUpOf, ...(todoMode ? { mode: "todo" as const } : {}) });
+      createVoiceEntry({ id, audioFile: stored, durationSec, waveform: compactWaveform(levels.current), prompt: params.prompt, followUpOf: params.followUpOf, ...(todoMode ? { mode: "todo" as const } : {}) });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       void endLiveRecording(true);
       router.replace({ pathname: "/processing", params: { id } });
@@ -200,6 +206,20 @@ export default function Record() {
       </Pressable>
     </View>
   );
+}
+
+// Averages the per-poll levels down to at most 200 bars, two decimals each.
+function compactWaveform(raw: number[]): number[] | undefined {
+  if (raw.length < 5) return undefined;
+  const n = Math.min(200, raw.length);
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = Math.floor((i * raw.length) / n);
+    const b = Math.max(a + 1, Math.floor(((i + 1) * raw.length) / n));
+    const slice = raw.slice(a, b);
+    out.push(Math.round((slice.reduce((s, v) => s + v, 0) / slice.length) * 100) / 100);
+  }
+  return out;
 }
 
 // metering is dBFS (-160..0); speech sits around -45..-10.

@@ -18,6 +18,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - Theme: `colors` is a mutable palette swapped by `applyScheme`; read `colors.x` during render (or use `styles` getters / `shadow()`), never capture it at module scope or in `StyleSheet.create`.
 - UI copy is Simplified Chinese, short and warm; the mascot speaks in `SpeechBubble`s. Every tap gets haptics (`tap()`, `PillButton` does it); confirmations use `toast()` — pass an action for undo.
 - State lives in one JSON file via `lib/store.ts` (`setState` → debounced atomic save). Add fields with defaults in `DEFAULT_STATE`; `loadState` merges, so old files keep working.
+- Memo playback is `components/WaveformPlayer` (tap/drag the waveform to seek, speed pill, Live Activity + lock screen). Waveforms come from recorder metering saved on the entry; older memos learn theirs from `useAudioSampleListener` on first full play.
 - Logging: `logger("area")`; log ids, counts, timings, errors — never journal text or transcripts. Users debug via Settings → 上传日志; read it on the server at `/opt/voicememo/data/logs/<id>.log`.
 - React compiler lint is on: no reading refs during render, no `Date.now()`/`new Date()` in render (keep `now` in state), no `setState` straight inside effects.
 

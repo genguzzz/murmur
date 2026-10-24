@@ -1,20 +1,19 @@
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Share, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
-import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { endLivePlayback, livePlayback } from "@/lib/device";
 import { BottomBar } from "@/components/BottomBar";
 import { EntryArt } from "@/components/EntryArt";
 import { Mascot } from "@/components/Mascot";
 import { MoodLegend } from "@/components/MoodLegend";
 import { MoodStamp } from "@/components/MoodStamp";
+import { WaveformPlayer } from "@/components/WaveformPlayer";
 import { Card, Chip, EmptyState, IconButton, PillButton, Screen, SectionTitle, Sheet, SmallButton, SpeechBubble, TopBar, styles as ui, tap, toast } from "@/components/ui";
 import { logger } from "@/lib/log";
-import { audioFile, deleteEntry, processEntry, reanalyze, setKeepOnHome, setReturnAt, useStore, type Entry } from "@/lib/store";
-import { clock, dayKey, fullDate, shortDate } from "@/lib/format";
+import { deleteEntry, processEntry, reanalyze, setKeepOnHome, setReturnAt, useStore } from "@/lib/store";
+import { dayKey, fullDate } from "@/lib/format";
 import { colors, fonts, MOOD_LABELS } from "@/lib/theme";
 
 const log = logger("entry");
@@ -154,9 +153,13 @@ export default function EntryScreen() {
             <SectionTitle
               icon="document-text-outline"
               title="你的原话"
-              right={entry.kind === "voice" && entry.audioFile ? <InlinePlayer entry={entry} /> : null}
             />
             <Card>
+              {entry.kind === "voice" && entry.audioFile ? (
+                <View style={{ marginBottom: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <WaveformPlayer entry={entry} />
+                </View>
+              ) : null}
               <Text selectable numberOfLines={expanded ? undefined : 5} style={{ fontSize: 16, lineHeight: 28, color: colors.text, letterSpacing: 0.5 }}>{words}</Text>
               {words.length > 120 ? (
                 <Pressable onPress={() => { tap(); setExpanded(!expanded); }} style={{ marginTop: 8 }}>
@@ -243,49 +246,3 @@ function MenuRow({ icon, label, onPress, danger, disabled }: { icon: keyof typeo
   );
 }
 
-// Play/pause + elapsed time, sits in the "你的原话" header.
-function InlinePlayer({ entry }: { entry: Entry }) {
-  const uri = Platform.OS === "web" ? entry.audioFile! : audioFile(entry.audioFile!).uri;
-  const player = useAudioPlayer(uri);
-  const status = useAudioPlayerStatus(player);
-
-  const duration = status.duration || entry.durationSec || 0;
-  const title = entry.title || "语音记录";
-  const subtitle = `${shortDate(entry.createdAt)} · Murmur`;
-
-  useEffect(() => {
-    // Keeps playing (with lock screen controls and the Live Activity) after leaving the app.
-    void setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, shouldPlayInBackground: true, interruptionMode: "doNotMix" });
-    return () => {
-      void endLivePlayback();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (status.didJustFinish) void endLivePlayback();
-  }, [status.didJustFinish]);
-
-  const toggle = () => {
-    tap();
-    if (status.playing) {
-      player.pause();
-      void livePlayback({ title, subtitle, positionSec: status.currentTime, durationSec: duration, playing: false });
-    } else {
-      const restart = status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration - 0.1);
-      if (restart) void player.seekTo(0);
-      player.setActiveForLockScreen(true, { title, artist: "Murmur" });
-      player.play();
-      void livePlayback({ title, subtitle, positionSec: restart ? 0 : status.currentTime, durationSec: duration, playing: true });
-    }
-  };
-  return (
-    <Pressable onPress={toggle} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-      <Text style={[ui.faint, { fontVariant: ["tabular-nums"] }]}>
-        {status.playing || status.currentTime > 0 ? `${clock(status.currentTime * 1000)} / ` : ""}{clock(duration * 1000)}
-      </Text>
-      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }}>
-        <Ionicons name={status.playing ? "pause" : "play"} size={14} color={colors.onPrimary} />
-      </View>
-    </Pressable>
-  );
-}
