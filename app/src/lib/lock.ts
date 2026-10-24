@@ -99,7 +99,12 @@ export async function authenticateBiometric(): Promise<boolean> {
       fallbackLabel: "",
     });
     log.info("biometric result", r.success ? { success: true } : { success: false, error: r.error });
-    return r.success;
+    if (r.success || r.error !== "lockout") return r.success;
+    // iOS locks Face ID after repeated failed scans and only the device passcode
+    // clears it; biometrics-only auth would keep failing instantly until then.
+    const p = await LocalAuthentication.authenticateAsync({ promptMessage: "面容 ID 已锁定，输入手机密码以重新启用" });
+    log.info("passcode fallback result", p.success ? { success: true } : { success: false, error: p.error });
+    return p.success;
   } catch (e) {
     log.error("biometric error", e);
     return false;
