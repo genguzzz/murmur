@@ -8,6 +8,7 @@ import { describeError } from "@/lib/api";
 import { logger } from "@/lib/log";
 import { briefKey, completeTodo, postponeTodo, refreshBrief, reopenTodo, useStore } from "@/lib/store";
 import { todayTodos, type Todo } from "@/lib/todo";
+import { nowWall, wall } from "@/lib/zone";
 import { colors, fonts } from "@/lib/theme";
 
 const log = logger("brief");
@@ -78,8 +79,8 @@ export function BriefCard() {
     else router.push({ pathname: "/todos", params: { focus: t.id } });
   };
 
-  const now = new Date();
-  const updated = brief ? new Date(brief.at) : null;
+  const now = nowWall();
+  const updated = brief ? wall(brief.at) : null;
   const headline = brief?.data.headline ?? (today.length ? `今天有 ${today.length} 件事要做` : openCount ? "今天没有到期的事" : "");
   const body = brief?.data.body ?? "";
 

@@ -4,6 +4,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { tap } from "./ui";
 import { addDays, dayLabel, parseDate, REPEAT_LABEL, today, toDateStr, toTimeStr, type Repeat } from "@/lib/todo";
 import { colors, scheme } from "@/lib/theme";
+import { nowWall } from "@/lib/zone";
 
 export interface Due {
   date: string;
@@ -11,7 +12,7 @@ export interface Due {
   repeat: Repeat;
 }
 
-function quickDates(now = new Date()): { label: string; date: string }[] {
+function quickDates(now = nowWall()): { label: string; date: string }[] {
   const t = today(now);
   const dow = now.getDay();
   const sat = addDays(t, dow === 6 ? 7 : 6 - dow);
@@ -26,7 +27,7 @@ function quickDates(now = new Date()): { label: string; date: string }[] {
 
 // Next sensible time on the chosen day: tomorrow and later → 09:00; today → next full hour.
 function defaultTime(date: string): string {
-  const now = new Date();
+  const now = nowWall();
   if (date !== today(now)) return "09:00";
   const h = Math.min(23, now.getHours() + 1);
   return `${`${h}`.padStart(2, "0")}:00`;

@@ -3,13 +3,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { Card, Chip, styles as ui } from "@/components/ui";
 import { MoodStamp } from "@/components/MoodStamp";
 import type { Entry } from "@/lib/store";
-import { timeAgo } from "@/lib/format";
+import { timeAgo, clockOf } from "@/lib/format";
 import { colors, MOOD_LABELS } from "@/lib/theme";
 
-function clockTime(iso: string) {
-  const d = new Date(iso);
-  return `${d.getHours()}:${`${d.getMinutes()}`.padStart(2, "0")}`;
-}
+const clockTime = clockOf;
 
 // `full` adds the stamp, time and theme chips (calendar/list); compact is for Home.
 export function EntryCard({ entry, onPress, full }: { entry: Entry; onPress: () => void; full?: boolean }) {

@@ -14,9 +14,10 @@ import { appVersion, describeError, ping, uploadLogs } from "@/lib/api";
 import { authenticateBiometric, biometricKind, disableLock } from "@/lib/lock";
 import { collectLogs, logger, recentLines, sessionId } from "@/lib/log";
 import { cancelRemember, ensurePermission, permissionState, syncCheckins, type CheckinPrefs, type PermissionState } from "@/lib/notify";
-import { debugSummary, exportJson, resyncTodoReminders, updateSettings, useStore, wipeAll } from "@/lib/store";
+import { debugSummary, exportJson, getState, resyncTodoReminders, updateSettings, useStore, wipeAll } from "@/lib/store";
 import { checkAndFetch, restartToApply, runningLabel, updatesEnabled } from "@/lib/updates";
 import { dayKey } from "@/lib/format";
+import { appZone, deviceZone, offsetLabel, wall, zoneOffset } from "@/lib/zone";
 import { colors, radius } from "@/lib/theme";
 
 const log = logger("settings");
@@ -30,13 +31,29 @@ const LOOKS = [["original", "原版"], ["glasses", "戴眼镜"], ["beret", "贝�
 const MORNING_TIMES = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"];
 const EVENING_TIMES = ["20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00"];
 const ALLDAY_TIMES = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "12:00"];
+const ZONES = [
+  ["Asia/Shanghai", "北京时间"],
+  ["Asia/Hong_Kong", "香港"],
+  ["Asia/Taipei", "台北"],
+  ["Asia/Singapore", "新加坡"],
+  ["Asia/Tokyo", "东京"],
+  ["Europe/London", "伦敦"],
+  ["Europe/Paris", "巴黎"],
+  ["America/New_York", "纽约"],
+  ["America/Los_Angeles", "洛杉矶"],
+] as const;
+
+function zoneLabel(tz: string): string {
+  const name = ZONES.find((z) => z[0] === tz)?.[1] ?? tz;
+  return `${name} · ${offsetLabel(zoneOffset(tz, new Date()))}`;
+}
 
 export default function Settings() {
   const settings = useStore((s) => s.settings);
   const entries = useStore((s) => s.entries);
   const router = useRouter();
   const [bioKind, setBioKind] = useState<"faceid" | "touchid" | null>(null);
-  const [sheet, setSheet] = useState<null | "theme" | "look" | "morning" | "evening" | "remember" | "todo">(null);
+  const [sheet, setSheet] = useState<null | "theme" | "look" | "morning" | "evening" | "remember" | "todo" | "zone">(null);
   const [perm, setPerm] = useState<PermissionState | null>(null);
   const [server, setServer] = useState(settings.server);
   const [token, setToken] = useState(settings.token);
@@ -58,7 +75,8 @@ export default function Settings() {
     const voiceSec = entries.reduce((n, e) => n + (e.kind === "voice" ? e.durationSec ?? 0 : 0), 0);
     return { count: entries.length, minutes: Math.round(voiceSec / 60), days: new Set(entries.map((e) => dayKey(e.createdAt))).size };
   }, [entries]);
-  const since = settings.memberSince ? new Date(settings.memberSince) : new Date();
+  // memberSince is filled in on first load, so it is always set here.
+  const since = wall(settings.memberSince ?? 0);
 
   // ---------- notifications ----------
   const setCheckins = async (next: CheckinPrefs, needsPermission: boolean) => {
@@ -71,6 +89,15 @@ export default function Settings() {
     if (!next.remember) void cancelRemember();
   };
   const ck = settings.checkins;
+
+  const setZone = (tz: string | null) => {
+    tap();
+    updateSettings({ timeZone: tz });
+    // Reminders and check-ins are scheduled in device time: rebuild them for the new zone.
+    resyncTodoReminders();
+    void syncCheckins(getState().settings.checkins);
+    log.info("time zone", { pinned: tz, device: deviceZone() });
+  };
 
   // ---------- lock ----------
   const toggleLock = (on: boolean) => {
@@ -194,6 +221,12 @@ export default function Settings() {
             value={ck.evening.enabled}
             onChange={(v) => void setCheckins({ ...ck, evening: { ...ck.evening, enabled: v } }, v)}
             onPress={ck.evening.enabled ? () => setSheet("evening") : undefined}
+          />
+          <NavRow
+            icon="globe-outline"
+            title="时区"
+            subtitle={settings.timeZone ? `指定：${zoneLabel(settings.timeZone)}` : `跟随系统：${zoneLabel(deviceZone())}`}
+            onPress={() => setSheet("zone")}
           />
           <NavRow
             icon="checkmark-circle-outline"
@@ -358,6 +391,36 @@ export default function Settings() {
             style={{ marginTop: 16 }}
           />
         ) : null}
+      </Sheet>
+
+      <Sheet visible={sheet === "zone"} onClose={() => setSheet(null)} icon={<Ionicons name="globe" size={26} color={colors.primary} />} title="时区" body="待办的日期和提醒、「明天下午三点」这类说法、签到时间都按这个时区算。" button="完成">
+        <View style={{ marginTop: 14 }}>
+          <ToggleRow
+            icon="location-outline"
+            title="指定时区"
+            subtitle={settings.timeZone ? "不随手机时区变化" : `现在跟随系统：${zoneLabel(deviceZone())}`}
+            value={!!settings.timeZone}
+            onChange={(v) => setZone(v ? "Asia/Shanghai" : null)}
+          />
+          {settings.timeZone ? (
+            <View style={{ gap: 6, marginTop: 4 }}>
+              {ZONES.map(([tz, name]) => {
+                const on = settings.timeZone === tz;
+                const off = zoneOffset(tz, new Date());
+                return (
+                  <Pressable key={tz} onPress={() => setZone(tz)} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 11, paddingHorizontal: 14, borderRadius: radius.sm, backgroundColor: on ? colors.primarySoft : colors.cardMuted, borderWidth: 1, borderColor: on ? colors.primary : colors.border }}>
+                    <Text style={{ flex: 1, fontSize: 15, color: colors.text, fontWeight: on ? "700" : "400" }}>{name}</Text>
+                    <Text style={{ fontSize: 13, color: colors.textSoft, marginRight: on ? 8 : 0 }}>{offsetLabel(off)}</Text>
+                    {on ? <Ionicons name="checkmark" size={18} color={colors.primary} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+          <Text style={[ui.faint, { textAlign: "center", marginTop: 12 }]}>
+            按当前设置，现在是 {(() => { const w = wall(); return `${w.getMonth() + 1}月${w.getDate()}日 ${w.getHours()}:${`${w.getMinutes()}`.padStart(2, "0")}`; })()}（{appZone()}）
+          </Text>
+        </View>
       </Sheet>
 
       <Sheet visible={sheet === "remember"} onClose={() => setSheet(null)} icon={<Ionicons name="sparkles" size={26} color={colors.primary} />} title="记得你说过的话" body={`每条记录整理完后，Murmur 会在第二天 ${ck.evening.time}（晚间签到的时间）用这条记录的追问提醒你，点开就能接着说。`} button={null}>

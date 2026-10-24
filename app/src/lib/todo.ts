@@ -1,5 +1,7 @@
 // To-do model and date helpers. Dates are local "YYYY-MM-DD", times local "HH:MM";
 // a to-do with a date but no time is all-day and reminds at settings.todoAllDayTime.
+// All of these are wall times in the app time zone (lib/zone); `now` defaults to it.
+import { appZone, nowWall } from "./zone";
 
 export type Repeat = "none" | "daily" | "weekdays" | "weekly" | "monthly";
 
@@ -61,40 +63,37 @@ export function addDays(date: string, n: number): string {
   return toDateStr(d);
 }
 
-export function today(now = new Date()): string {
+export function today(now = nowWall()): string {
   return toDateStr(now);
 }
 
 // "2026-10-24 15:20 周六": what the model resolves relative dates against.
-export function localNow(now = new Date()): string {
+export function localNow(now = nowWall()): string {
   return `${toDateStr(now)} ${toTimeStr(now)} 周${WEEK[now.getDay()]}`;
 }
 
 export function timeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "";
-  }
+  return appZone();
 }
 
-// When the reminder fires (all-day → the configured morning time).
+// When the reminder fires, as a wall date (all-day → the configured morning time).
+// Use zone.instantOf() to get the real instant.
 export function dueAt(t: Pick<Todo, "date" | "time">, allDayTime: string): Date | null {
   return t.date ? parseDate(t.date, t.time || allDayTime) : null;
 }
 
-export function isOverdue(t: Pick<Todo, "date" | "time" | "doneAt">, now = new Date()): boolean {
+export function isOverdue(t: Pick<Todo, "date" | "time" | "doneAt">, now = nowWall()): boolean {
   if (!t.date || t.doneAt) return false;
   if (!t.time) return t.date < today(now);
   return parseDate(t.date, t.time).getTime() < now.getTime();
 }
 
-export function overdueDays(t: Pick<Todo, "date">, now = new Date()): number {
+export function overdueDays(t: Pick<Todo, "date">, now = nowWall()): number {
   if (!t.date) return 0;
   return Math.max(0, Math.round((parseDate(today(now)).getTime() - parseDate(t.date).getTime()) / 86400_000));
 }
 
-export function dayLabel(date: string, now = new Date()): string {
+export function dayLabel(date: string, now = nowWall()): string {
   const t = today(now);
   if (date === t) return "今天";
   if (date === addDays(t, 1)) return "明天";
@@ -107,13 +106,13 @@ export function dayLabel(date: string, now = new Date()): string {
   return d.getFullYear() === now.getFullYear() ? md : `${d.getFullYear()}年${md}`;
 }
 
-export function dueLabel(t: Pick<Todo, "date" | "time">, now = new Date()): string {
+export function dueLabel(t: Pick<Todo, "date" | "time">, now = nowWall()): string {
   if (!t.date) return "";
   return t.time ? `${dayLabel(t.date, now)} ${t.time}` : dayLabel(t.date, now);
 }
 
 // Next date for a repeating to-do after it was completed.
-export function nextOccurrence(t: Todo, now = new Date()): string {
+export function nextOccurrence(t: Todo, now = nowWall()): string {
   const base = t.date && t.date > today(now) ? t.date : today(now);
   let d = base;
   const step = () => {
@@ -150,7 +149,7 @@ export function sortTodos(list: Todo[], allDayTime: string): Todo[] {
 export type TodoSection = { key: string; title: string; tone?: "danger" | "primary"; todos: Todo[] };
 
 // Overdue · Today · Tomorrow · later days · Anytime.
-export function groupTodos(list: Todo[], allDayTime: string, now = new Date()): TodoSection[] {
+export function groupTodos(list: Todo[], allDayTime: string, now = nowWall()): TodoSection[] {
   const open = sortTodos(list.filter((t) => !t.doneAt), allDayTime);
   const t0 = today(now);
   const sections = new Map<string, TodoSection>();
@@ -172,7 +171,7 @@ export function groupTodos(list: Todo[], allDayTime: string, now = new Date()): 
 }
 
 // Today + overdue, for the tab badge and Home.
-export function todayTodos(list: Todo[], allDayTime: string, now = new Date()): Todo[] {
+export function todayTodos(list: Todo[], allDayTime: string, now = nowWall()): Todo[] {
   const t0 = today(now);
   return sortTodos(list.filter((t) => !t.doneAt && t.date && t.date <= t0), allDayTime);
 }

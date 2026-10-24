@@ -1,13 +1,14 @@
 import { Text, View } from "react-native";
 import type { Entry } from "@/lib/store";
 import { dayKey, startOfWeek } from "@/lib/format";
+import { nowWall } from "@/lib/zone";
 import { colors } from "@/lib/theme";
 import { MoodStamp } from "./MoodStamp";
 
 // Seven day tiles (Sun..Sat) showing that day's most recent mood stamp.
 export function WeekStrip({ entries }: { entries: Entry[] }) {
   const start = startOfWeek();
-  const today = dayKey(new Date());
+  const today = dayKey(nowWall());
   const moodByDay = new Map<string, string>();
   for (const e of entries) {
     const k = dayKey(e.createdAt);

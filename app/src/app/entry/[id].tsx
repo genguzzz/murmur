@@ -16,7 +16,8 @@ import { WaveformPlayer } from "@/components/WaveformPlayer";
 import { Card, Chip, EmptyState, IconButton, PillButton, Screen, SectionTitle, Sheet, SmallButton, SpeechBubble, TopBar, styles as ui, tap, toast } from "@/components/ui";
 import { logger } from "@/lib/log";
 import { deleteEntry, processEntry, reanalyze, setKeepOnHome, setReturnAt, useStore } from "@/lib/store";
-import { dayKey, fullDate } from "@/lib/format";
+import { dayKey, fullDate, shortDate } from "@/lib/format";
+import { instantOf, nowWall } from "@/lib/zone";
 import { colors, fonts, MOOD_LABELS } from "@/lib/theme";
 
 const log = logger("entry");
@@ -51,12 +52,13 @@ export default function EntryScreen() {
   };
 
   const chooseTime = (days: number) => {
-    const at = new Date();
-    at.setDate(at.getDate() + days);
-    at.setHours(9, 0, 0, 0);
+    const w = nowWall();
+    w.setDate(w.getDate() + days);
+    w.setHours(9, 0, 0, 0);
+    const at = instantOf(w);
     setReturnAt(entry.id, at.toISOString());
     setPickTime(false);
-    toast("约好了", `${at.getMonth() + 1}月${at.getDate()}日 会回到首页。`);
+    toast("约好了", `${shortDate(at.toISOString())} 会回到首页。`);
   };
 
   const cancelReturn = () => {
@@ -125,7 +127,7 @@ export default function EntryScreen() {
                   {entry.keepOnHome
                     ? "会一直留在首页，直到你移除。"
                     : entry.returnAt
-                      ? `${new Date(entry.returnAt).getMonth() + 1}月${new Date(entry.returnAt).getDate()}日 回到首页。`
+                      ? `${shortDate(entry.returnAt)} 回到首页。`
                       : "准备好接着想的时候，把它带回首页。"}
                 </Text>
               </View>

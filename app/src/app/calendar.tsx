@@ -8,6 +8,7 @@ import { MoodStamp } from "@/components/MoodStamp";
 import { Bubble, Card, IconButton, Screen, TopBar, styles as ui, tap } from "@/components/ui";
 import { sortedEntries, useStore, type Entry } from "@/lib/store";
 import { dayKey } from "@/lib/format";
+import { nowWall } from "@/lib/zone";
 import { colors, fonts, MOOD_LABELS } from "@/lib/theme";
 
 const WEEKDAYS = "日一二三四五六";
@@ -25,9 +26,9 @@ export default function Calendar() {
   const params = useLocalSearchParams<{ day?: string }>();
   const raw = useStore((s) => s.entries);
   const entries = useMemo(() => sortedEntries(raw), [raw]);
-  const initial = params.day ? new Date(`${params.day}T12:00:00`) : new Date();
+  const initial = params.day ? new Date(`${params.day}T12:00:00`) : nowWall();
   const [month, setMonth] = useState(() => new Date(initial.getFullYear(), initial.getMonth(), 1));
-  const [selected, setSelected] = useState<string>(params.day ?? dayKey(new Date()));
+  const [selected, setSelected] = useState<string>(params.day ?? dayKey(nowWall()));
   const [legend, setLegend] = useState(false);
 
   const byDay = useMemo(() => {
@@ -48,7 +49,7 @@ export default function Calendar() {
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   while (cells.length % 7) cells.push(null);
-  const today = dayKey(new Date());
+  const today = dayKey(nowWall());
   const shift = (n: number) => { tap(); setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1)); };
   const dayEntries = byDay.get(selected) ?? [];
   const dayMood = mainMood(dayEntries);

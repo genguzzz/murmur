@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { logger } from "./log";
 import { dueAt, parseDate, sortTodos, today, type Todo } from "./todo";
+import { instantOf, nowWall } from "./zone";
 
 const log = logger("notify");
 
@@ -50,6 +51,13 @@ function parseTime(t: string): { hour: number; minute: number } {
   return { hour: h || 0, minute: m || 0 };
 }
 
+// Repeating triggers fire on the device's local clock; translate a wall time in the
+// app zone (on a reference date) into the device-local fields iOS expects.
+function deviceFields(date: string, time: string) {
+  const at = instantOf(parseDate(date, time));
+  return { hour: at.getHours(), minute: at.getMinutes(), weekday: at.getDay() + 1, day: at.getDate() };
+}
+
 function pick(list: string[]): string {
   return list[Math.floor(Math.random() * list.length)];
 }
@@ -64,10 +72,11 @@ export async function syncCheckins(prefs: CheckinPrefs): Promise<void> {
       const p = prefs[which];
       if (!p.enabled) continue;
       const prompt = pick(which === "morning" ? MORNING_PROMPTS : EVENING_PROMPTS);
+      const at = deviceFields(today(), p.time);
       await Notifications.scheduleNotificationAsync({
         identifier: ID[which],
         content: { title: which === "morning" ? "早间签到" : "晚间签到", body: prompt, data: { route: "/record", prompt } },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, ...parseTime(p.time) },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: at.hour, minute: at.minute },
       });
     }
     log.info("check-ins synced", { morning: prefs.morning, evening: prefs.evening });
@@ -82,9 +91,10 @@ export async function scheduleRemember(prefs: CheckinPrefs, entry: { id: string;
   try {
     await Notifications.cancelScheduledNotificationAsync(ID.remember);
     const { hour, minute } = parseTime(prefs.evening.time);
-    const at = new Date();
-    at.setDate(at.getDate() + 1);
-    at.setHours(hour, minute, 0, 0);
+    const w = nowWall();
+    w.setDate(w.getDate() + 1);
+    w.setHours(hour, minute, 0, 0);
+    const at = instantOf(w);
     await Notifications.scheduleNotificationAsync({
       identifier: ID.remember,
       content: { title: `还记得「${entry.title ?? "昨天那条记录"}」吗？`, body: entry.followUp, data: { route: "/record", prompt: entry.followUp, followUpOf: entry.id } },
@@ -139,11 +149,12 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
     if (!(await Notifications.getPermissionsAsync()).granted) return;
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     await Promise.all(scheduled.filter((n) => n.identifier.startsWith(TODO_PREFIX)).map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
-    const now = new Date();
+    const now = nowWall();
     const open = sortTodos(todos.filter((t) => !t.doneAt && t.date), allDayTime).slice(0, MAX_TODO_REMINDERS);
     let count = 0;
     for (const t of open) {
-      const { hour, minute } = parseTime(t.time || allDayTime);
+      const local = deviceFields(t.date!, t.time || allDayTime);
+      const { hour, minute } = local;
       const content: Notifications.NotificationContentInput = {
         title: t.title,
         body: t.time ? (t.note || "到时间了") : (t.note || "今天要做的事"),
@@ -153,15 +164,22 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
       const T = Notifications.SchedulableTriggerInputTypes;
       const triggers: { id: string; trigger: Notifications.NotificationTriggerInput }[] = [];
       if (t.repeat === "daily") triggers.push({ id: t.id, trigger: { type: T.DAILY, hour, minute } });
-      else if (t.repeat === "weekdays") for (const weekday of [2, 3, 4, 5, 6]) triggers.push({ id: `${t.id}-${weekday}`, trigger: { type: T.WEEKLY, weekday, hour, minute } });
-      else if (t.repeat === "weekly") triggers.push({ id: t.id, trigger: { type: T.WEEKLY, weekday: parseDate(t.date!).getDay() + 1, hour, minute } });
-      else if (t.repeat === "monthly") triggers.push({ id: t.id, trigger: { type: T.MONTHLY, day: parseDate(t.date!).getDate(), hour, minute } });
+      else if (t.repeat === "weekdays") {
+        // Mon–Fri in the app zone; shift if the zone difference crosses midnight.
+        const delta = (local.weekday - (parseDate(t.date!).getDay() + 1) + 7) % 7;
+        for (const w of [2, 3, 4, 5, 6]) {
+          const weekday = ((w - 1 + delta) % 7) + 1;
+          triggers.push({ id: `${t.id}-${w}`, trigger: { type: T.WEEKLY, weekday, hour, minute } });
+        }
+      }
+      else if (t.repeat === "weekly") triggers.push({ id: t.id, trigger: { type: T.WEEKLY, weekday: local.weekday, hour, minute } });
+      else if (t.repeat === "monthly") triggers.push({ id: t.id, trigger: { type: T.MONTHLY, day: local.day, hour, minute } });
       else {
         const at = dueAt(t, allDayTime)!;
         // An all-day to-do created after its reminder time still gets a nudge today.
         if (at <= now && !t.time && t.date === today(now) && now.getHours() < 21) at.setTime(now.getTime() + 60_000);
         if (at <= now) continue;
-        triggers.push({ id: t.id, trigger: { type: T.DATE, date: at } });
+        triggers.push({ id: t.id, trigger: { type: T.DATE, date: instantOf(at) } });
       }
       for (const x of triggers) {
         await Notifications.scheduleNotificationAsync({ identifier: `${TODO_PREFIX}${x.id}`, content, trigger: x.trigger });

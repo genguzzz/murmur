@@ -21,6 +21,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - Memo playback is `components/WaveformPlayer` (tap/drag the waveform to seek, speed pill, Live Activity + lock screen). Waveforms come from recorder metering saved on the entry; older memos learn theirs from `useAudioSampleListener` on first full play.
 - Logging: `logger("area")`; log ids, counts, timings, errors — never journal text or transcripts. Users debug via Settings → 上传日志; read it on the server at `/opt/voicememo/data/logs/<id>.log`.
 - Gestures inside scrollable or swipe-back screens use react-native-gesture-handler (`usePanGesture`/`useTapGesture` + `GestureDetector`, with the screen's `ScrollView` imported from gesture-handler), not `PanResponder`: JS responders are invisible to UIKit, so the page scrolls or swipes back during the drag. Don't patch it by toggling `gestureEnabled`.
+- Time: everything date-related runs in the app time zone (`lib/zone.ts`; Settings → 时区, default follows the phone, can pin e.g. Asia/Shanghai). Use `nowWall()`/`wall(iso)`/`today()` for logic and display, `instantOf(wall)` when handing a time to iOS (notification triggers, Calendar). Never `new Date()` for "what day/hour is it". `dayKey(iso)` converts; `dayKey(date)` assumes a wall date.
 - React compiler lint is on: no reading refs during render, no `Date.now()`/`new Date()` in render (keep `now` in state), no `setState` straight inside effects.
 
 ## Native capabilities (runtime 4)

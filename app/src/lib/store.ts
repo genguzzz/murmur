@@ -6,6 +6,7 @@ import { Directory, File, Paths } from "expo-file-system";
 import * as api from "./api";
 import { logger } from "./log";
 import { setTrackingEnabled, timed, track } from "./track";
+import { nowWall, setAppZone } from "./zone";
 import { countWords, dayKey } from "./format";
 import { scheduleRemember, syncTodoReminders, type CheckinPrefs } from "./notify";
 import { addDays, dueLabel, isOverdue, localNow, nextOccurrence, overdueDays, sortTodos, timeZone, today, type Todo, type TodoDraft } from "./todo";
@@ -100,6 +101,7 @@ export interface Settings {
   todoAllDayTime: string; // reminder time for to-dos with a date but no time
   analytics: boolean; // upload usage events (no content) to the server
   playbackRate: number; // last speed chosen in the player
+  timeZone: string | null; // pinned IANA zone for dates/reminders; null = follow the phone
   memberSince?: string;
 }
 
@@ -133,6 +135,7 @@ const DEFAULT_STATE: State = {
     todoAllDayTime: "09:00",
     analytics: true,
     playbackRate: 1,
+    timeZone: null,
   },
 };
 
@@ -195,6 +198,7 @@ async function readState(beforeReady?: () => void): Promise<void> {
   }
   api.configureApi(state.settings);
   setTrackingEnabled(state.settings.analytics);
+  setAppZone(state.settings.timeZone);
   beforeReady?.();
   loaded = true;
   emit();
@@ -264,6 +268,7 @@ export function updateSettings(patch: Partial<Settings>) {
   setState((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   api.configureApi(state.settings);
   setTrackingEnabled(state.settings.analytics);
+  setAppZone(state.settings.timeZone);
   log.info("settings updated", { keys: Object.keys(patch), hasToken: !!state.settings.token, server: state.settings.server });
 }
 
@@ -748,12 +753,12 @@ export function briefKey(): string {
 
 export async function refreshBrief(): Promise<void> {
   const key = briefKey();
-  const now = new Date();
+  const now = nowWall();
   const open = openTodos().slice(0, 30);
   const dayMs = 86400_000;
   const recentDone = state.todos
     .map((t) => ({ t, at: t.doneAt ?? t.lastDoneAt }))
-    .filter((x): x is { t: Todo; at: string } => !!x.at && now.getTime() - new Date(x.at).getTime() < 3 * dayMs)
+    .filter((x): x is { t: Todo; at: string } => !!x.at && Date.now() - new Date(x.at).getTime() < 3 * dayMs)
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 8);
   const data = await timed("brief", () => api.brief({
@@ -764,7 +769,7 @@ export async function refreshBrief(): Promise<void> {
       title: t.title,
       ...(t.date ? { due: dueLabel(t, now) } : {}),
       ...(isOverdue(t, now) ? { overdueDays: Math.max(1, overdueDays(t, now)) } : {}),
-      ageDays: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / dayMs),
+      ageDays: Math.floor((Date.now() - new Date(t.createdAt).getTime()) / dayMs),
       ...(t.postponed ? { postponed: t.postponed } : {}),
     })),
     done: recentDone.map((x) => ({ title: x.t.title, when: dayKey(x.at) === today(now) ? "今天" : dayKey(x.at) })),

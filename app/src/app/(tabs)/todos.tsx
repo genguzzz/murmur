@@ -12,6 +12,7 @@ import { logger } from "@/lib/log";
 import { addTodos, clearDoneTodos, completeTodo, deleteTodo, quickAddTodo, reopenTodo, useStore } from "@/lib/store";
 import { dayLabel, groupTodos, type Todo } from "@/lib/todo";
 import { colors, radius, shadow } from "@/lib/theme";
+import { nowWall } from "@/lib/zone";
 
 const log = logger("todos");
 const EXAMPLES = ["明早 9 点交周报", "周五晚上给妈妈打电话", "每天 22:30 吃维生素"];
@@ -22,14 +23,14 @@ export default function Todos() {
   const todos = useStore((s) => s.todos);
   const inbox = useStore((s) => s.inbox);
   const allDay = useStore((s) => s.settings.todoAllDayTime);
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => nowWall());
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Todo | null>(null);
   const [showDone, setShowDone] = useState(false);
 
   // Re-evaluate "today/overdue" whenever the tab comes back into view.
-  useFocusEffect(useCallback(() => setNow(new Date()), []));
+  useFocusEffect(useCallback(() => setNow(nowWall()), []));
 
   const sections = useMemo(() => groupTodos(todos, allDay, now), [todos, allDay, now]);
   const done = useMemo(() => todos.filter((t) => t.doneAt).sort((a, b) => b.doneAt!.localeCompare(a.doneAt!)).slice(0, 30), [todos]);
