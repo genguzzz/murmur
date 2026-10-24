@@ -35,8 +35,8 @@ export function TopBar({ title, right }: { title?: string; right?: ReactNode }) 
   );
 }
 
-// Space the floating glass tab bar covers at the bottom of tab screens.
-export const TAB_BAR_SPACE = 104;
+// Space the system tab bar plus its bottom accessory cover at the bottom of tab screens.
+export const TAB_BAR_SPACE = 140;
 
 // Header for the four tab screens: drawer button, title, optional actions.
 export function TabHeader({ title, right, large = true }: { title?: string; right?: ReactNode; large?: boolean }) {

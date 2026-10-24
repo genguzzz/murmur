@@ -1,21 +1,63 @@
-import { Tabs } from "expo-router";
-import { View } from "react-native";
+import { useMemo } from "react";
+import { Platform, Pressable, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NativeTabs } from "expo-router/native-tabs";
+import { CaptureAccessory } from "@/components/CaptureAccessory";
 import { DrawerGestureArea } from "@/components/Drawer";
-import { GlassTabBar } from "@/components/GlassTabBar";
-import { colors } from "@/lib/theme";
+import { useStore } from "@/lib/store";
+import { todayTodos } from "@/lib/todo";
+import { colors, shadow } from "@/lib/theme";
 
-// The four everyday screens. Everything else lives in the side drawer.
+// Bottom accessories exist from iOS 26; elsewhere a floating mic stands in.
+const HAS_ACCESSORY = Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 26;
+
+// The four everyday screens on the system tab bar (Liquid Glass on iOS 26+), with the
+// capture actions in its bottom accessory. Everything else lives in the side drawer.
 export default function TabsLayout() {
+  const todos = useStore((s) => s.todos);
+  const allDay = useStore((s) => s.settings.todoAllDayTime);
+  const inbox = useStore((s) => s.inbox.length);
+  const badge = useMemo(() => todayTodos(todos, allDay).length + inbox, [todos, allDay, inbox]);
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <DrawerGestureArea>
-        <Tabs screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }} tabBar={(props) => <GlassTabBar {...props} />}>
-          <Tabs.Screen name="index" />
-          <Tabs.Screen name="todos" />
-          <Tabs.Screen name="entries" />
-          <Tabs.Screen name="chats" />
-        </Tabs>
-      </DrawerGestureArea>
+    <DrawerGestureArea>
+      <NativeTabs tintColor={colors.primary} minimizeBehavior="onScrollDown">
+        <NativeTabs.BottomAccessory>
+          <CaptureAccessory />
+        </NativeTabs.BottomAccessory>
+        <NativeTabs.Trigger name="index">
+          <NativeTabs.Trigger.Icon sf={{ default: "house", selected: "house.fill" }} md="home" />
+          <NativeTabs.Trigger.Label>首页</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="todos">
+          <NativeTabs.Trigger.Icon sf={{ default: "checklist", selected: "checklist.checked" }} md="checklist" />
+          <NativeTabs.Trigger.Label>待办</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Badge hidden={!badge}>{badge > 99 ? "99+" : String(badge)}</NativeTabs.Trigger.Badge>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="entries">
+          <NativeTabs.Trigger.Icon sf={{ default: "book", selected: "book.fill" }} md="menu_book" />
+          <NativeTabs.Trigger.Label>记录</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="chats">
+          <NativeTabs.Trigger.Icon sf={{ default: "bubble.left.and.bubble.right", selected: "bubble.left.and.bubble.right.fill" }} md="forum" />
+          <NativeTabs.Trigger.Label>对话</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+      </NativeTabs>
+      {HAS_ACCESSORY ? null : <FloatingMic />}
+    </DrawerGestureArea>
+  );
+}
+
+function FloatingMic() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  return (
+    <View pointerEvents="box-none" style={{ position: "absolute", right: 18, bottom: insets.bottom + 64 }}>
+      <Pressable onPress={() => router.push("/record")} onLongPress={() => router.push("/write")} accessibilityLabel="录一段" style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", ...shadow() }}>
+        <Ionicons name="mic" size={25} color={colors.onPrimary} />
+      </Pressable>
     </View>
   );
 }

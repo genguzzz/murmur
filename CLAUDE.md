@@ -13,7 +13,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 
 ## App conventions
 
-- Navigation: four tabs in `src/app/(tabs)/` (首页 · 待办 · 记录 · 对话) under a floating frosted `GlassTabBar` with the record button in the middle (tap = record; hold, slide to 写一段 / 记待办, release). Everything else opens from the left drawer (`components/Drawer.tsx`) or is a stack screen with `TopBar`. New top-level features go in the drawer unless they're daily-use.
+- Navigation: four tabs in `src/app/(tabs)/` (首页 · 待办 · 记录 · 对话) on the system tab bar (`NativeTabs`, Liquid Glass on iOS 26+, minimises on scroll). Capture actions (录一段 · 记待办 · 写一段) live in its bottom accessory (`components/CaptureAccessory`); `tabPress` can't be prevented, so never fake a button with a tab. Everything else opens from the left drawer (`components/Drawer.tsx`) or is a stack screen with `TopBar`. New top-level features go in the drawer unless they're daily-use.
 - Tab screens start with `TabHeader` and pad the bottom by `TAB_BAR_SPACE`.
 - Theme: `colors` is a mutable palette swapped by `applyScheme`; read `colors.x` during render (or use `styles` getters / `shadow()`), never capture it at module scope or in `StyleSheet.create`.
 - UI copy is Simplified Chinese, short and warm; the mascot speaks in `SpeechBubble`s. Every tap gets haptics (`tap()`, `PillButton` does it); confirmations use `toast()` — pass an action for undo.
