@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PanResponder, Platform, Pressable, Text, View, type LayoutChangeEvent } from "react-native";
+import { Platform, Pressable, Text, View, type LayoutChangeEvent } from "react-native";
+import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "expo-router";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus, useAudioSampleListener } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { tap } from "./ui";
@@ -46,52 +46,6 @@ function loudness(frames: number[]): number {
   const rms = Math.sqrt(sum / Math.max(1, Math.ceil(frames.length / 4)));
   const db = 20 * Math.log10(rms || 1e-6);
   return Math.max(0, Math.min(1, (db + 55) / 45));
-}
-
-// Tap or drag anywhere on the waveform; the seek happens on release. Gesture state
-// lives in this closure because the responder is created once per player.
-function createScrubber(setScrub: (p: number | null) => void, holdBack: (hold: boolean) => void) {
-  let width = 1;
-  let startX = 0;
-  let bucket = -1;
-  let seek: (p: number) => void = () => {};
-  const at = (dx: number) => Math.max(0, Math.min(1, (startX + dx) / width));
-  const pan = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > Math.abs(g.dy),
-    onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (e) => {
-      // While scrubbing, the page's swipe-back must not fire on the same drag.
-      holdBack(true);
-      startX = e.nativeEvent.locationX;
-      bucket = -1;
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setScrub(at(0));
-    },
-    onPanResponderMove: (_, g) => {
-      const p = at(g.dx);
-      // A light tick every 5% so dragging feels like a detented dial.
-      if (Math.floor(p * 20) !== bucket) {
-        bucket = Math.floor(p * 20);
-        void Haptics.selectionAsync();
-      }
-      setScrub(p);
-    },
-    onPanResponderRelease: (_, g) => {
-      holdBack(false);
-      setScrub(null);
-      seek(at(g.dx));
-    },
-    onPanResponderTerminate: () => {
-      holdBack(false);
-      setScrub(null);
-    },
-  });
-  return {
-    handlers: pan.panHandlers,
-    setWidth: (w: number) => { width = Math.max(1, w); },
-    onSeek: (fn: (p: number) => void) => { seek = fn; },
-  };
 }
 
 // Compact player for a memo: play/pause, a waveform you can tap or drag to seek,
@@ -182,22 +136,49 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
     if (status.playing) live(true, status.currentTime, next);
   };
 
-  const navigation = useNavigation();
-  const [scrubber] = useState(() => createScrubber(setScrub, (hold) => navigation.setOptions({ gestureEnabled: !hold })));
-  useEffect(() => {
-    scrubber.onSeek((p: number) => {
-      const t = p * duration;
-      void player.seekTo(t);
-      track("playback_seek", { pct: Math.round(p * 100) });
-      if (status.playing || status.currentTime > 0) live(status.playing, t);
-    });
-  });
-
-  const onLayout = (e: LayoutChangeEvent) => {
-    const w = e.nativeEvent.layout.width;
-    scrubber.setWidth(w);
-    setWidth(w);
+  const seekTo = (p: number) => {
+    const t = p * duration;
+    void player.seekTo(t);
+    track("playback_seek", { pct: Math.round(p * 100) });
+    if (status.playing || status.currentTime > 0) live(status.playing, t);
   };
+
+  // Native gestures, so iOS arbitrates them against the page's ScrollView and the
+  // back swipe: a horizontal drag scrubs (and the page stays put), a vertical drag
+  // fails the pan and scrolls the page, a tap seeks.
+  const bucket = useRef(-1);
+  const at = (x: number) => Math.max(0, Math.min(1, x / Math.max(1, width)));
+  const pan = usePanGesture({
+    runOnJS: true,
+    activeOffsetX: [-6, 6],
+    failOffsetY: [-10, 10],
+    onActivate: (e) => {
+      bucket.current = -1;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setScrub(at(e.x));
+    },
+    onUpdate: (e) => {
+      const p = at(e.x);
+      // A light tick every 5% so dragging feels like a detented dial.
+      if (Math.floor(p * 20) !== bucket.current) {
+        bucket.current = Math.floor(p * 20);
+        void Haptics.selectionAsync();
+      }
+      setScrub(p);
+    },
+    onDeactivate: (e) => {
+      setScrub(null);
+      if (!e.canceled) seekTo(at(e.x));
+    },
+  });
+  const tapSeek = useTapGesture({
+    runOnJS: true,
+    onActivate: (e) => {
+      void Haptics.selectionAsync();
+      seekTo(at(e.x));
+    },
+  });
+  const scrubGesture = useExclusiveGestures(pan, tapSeek);
 
   const playedBars = Math.round(progress * bars.length);
   const timeLeft = clock((scrub !== null ? scrub * duration : status.currentTime) * 1000);
@@ -213,7 +194,8 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
       </Pressable>
 
       <View style={{ flex: 1 }}>
-        <View onLayout={onLayout} {...scrubber.handlers} accessibilityRole="adjustable" accessibilityLabel="播放进度" style={{ height: HEIGHT, justifyContent: "center" }}>
+        <GestureDetector gesture={scrubGesture}>
+        <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} accessibilityRole="adjustable" accessibilityLabel="播放进度" style={{ height: HEIGHT, justifyContent: "center" }}>
           <View pointerEvents="none" style={{ flexDirection: "row", alignItems: "center", gap: GAP, height: HEIGHT }}>
             {bars.map((v, i) => (
               <View
@@ -239,6 +221,7 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
             <View pointerEvents="none" style={{ position: "absolute", left: Math.max(0, progress * width - 1), top: 0, bottom: 0, width: 2, borderRadius: 1, backgroundColor: colors.primaryDark }} />
           ) : null}
         </View>
+        </GestureDetector>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 3 }}>
           <Text style={{ fontSize: 11, color: colors.textFaint, fontVariant: ["tabular-nums"] }}>{timeLeft}</Text>
           <Text style={{ fontSize: 11, color: colors.textFaint, fontVariant: ["tabular-nums"] }}>{clock(duration * 1000)}</Text>

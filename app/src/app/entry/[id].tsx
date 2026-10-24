@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Share, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, Share, Text, View } from "react-native";
+// Gesture-handler ScrollView: lets the waveform's horizontal pan and this vertical
+// scroll negotiate natively instead of both moving at once.
+import { ScrollView } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
