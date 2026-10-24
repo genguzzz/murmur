@@ -24,6 +24,7 @@ type Item = { icon: keyof typeof Ionicons.glyphMap; label: string; path: string;
 
 const ITEMS: Item[] = [
   { icon: "create-outline", label: "写一段", path: "/write", hint: "不方便说话时打字记录" },
+  { icon: "time-outline", label: "历史记录", path: "/entries", hint: "按时间翻看所有记录" },
   { icon: "calendar-outline", label: "日历", path: "/calendar" },
   { icon: "sparkles-outline", label: "规律与洞察", path: "/insights" },
   { icon: "search-outline", label: "搜索", path: "/search" },
