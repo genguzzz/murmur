@@ -4,7 +4,7 @@
 /** @type {import('@bacons/apple-targets/app.plugin').Config} */
 module.exports = {
   type: "widget",
-  name: "MurmurLive",
+  name: "MurmurLiveWidget",
   displayName: "Murmur",
   bundleIdentifier: ".live",
   deploymentTarget: "16.4",
