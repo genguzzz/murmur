@@ -4,6 +4,7 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { logger } from "./log";
+import { dueAt, parseDate, sortTodos, today, type Todo } from "./todo";
 
 const log = logger("notify");
 
@@ -24,6 +25,15 @@ export function installNotificationHandler() {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
   });
+}
+
+export type PermissionState = "granted" | "ask" | "denied";
+
+export async function permissionState(): Promise<PermissionState> {
+  if (!enabled) return "denied";
+  const cur = await Notifications.getPermissionsAsync();
+  if (cur.granted) return "granted";
+  return cur.canAskAgain ? "ask" : "denied";
 }
 
 export async function ensurePermission(): Promise<boolean> {
@@ -94,7 +104,7 @@ export async function cancelRemember() {
 export function onNotificationTap(go: (route: string, params: Record<string, string>) => void): () => void {
   if (!enabled) return () => {};
   const handle = (r: Notifications.NotificationResponse | null) => {
-    const data = r?.notification.request.content.data as { route?: string; prompt?: string; followUpOf?: string } | undefined;
+    const data = r?.notification.request.content.data as { route?: string; prompt?: string; followUpOf?: string; todoId?: string } | undefined;
     if (!data?.route) return;
     log.info("tapped", { id: r?.notification.request.identifier });
     // Otherwise the same launch response is replayed on every cold start.
@@ -102,9 +112,64 @@ export function onNotificationTap(go: (route: string, params: Record<string, str
     const params: Record<string, string> = {};
     if (data.prompt) params.prompt = data.prompt;
     if (data.followUpOf) params.followUpOf = data.followUpOf;
+    if (data.todoId) params.focus = data.todoId;
     go(data.route, params);
   };
   void Notifications.getLastNotificationResponseAsync().then(handle);
   const sub = Notifications.addNotificationResponseReceivedListener(handle);
   return () => sub.remove();
+}
+
+// ---------- to-do reminders ----------
+
+const TODO_PREFIX = "todo-";
+const MAX_TODO_REMINDERS = 40; // iOS keeps at most 64 pending local notifications
+let todoTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Rebuilds every to-do reminder from scratch; cheap, and never leaves a stale one behind.
+// Debounced because the store calls it after each change.
+export function syncTodoReminders(todos: Todo[], allDayTime: string) {
+  if (!enabled) return;
+  if (todoTimer) clearTimeout(todoTimer);
+  todoTimer = setTimeout(() => void rebuildTodoReminders(todos, allDayTime), 600);
+}
+
+async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
+  try {
+    if (!(await Notifications.getPermissionsAsync()).granted) return;
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(scheduled.filter((n) => n.identifier.startsWith(TODO_PREFIX)).map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+    const now = new Date();
+    const open = sortTodos(todos.filter((t) => !t.doneAt && t.date), allDayTime).slice(0, MAX_TODO_REMINDERS);
+    let count = 0;
+    for (const t of open) {
+      const { hour, minute } = parseTime(t.time || allDayTime);
+      const content: Notifications.NotificationContentInput = {
+        title: t.title,
+        body: t.time ? (t.note || "到时间了") : (t.note || "今天要做的事"),
+        sound: "default",
+        data: { route: "/todos", todoId: t.id },
+      };
+      const T = Notifications.SchedulableTriggerInputTypes;
+      const triggers: { id: string; trigger: Notifications.NotificationTriggerInput }[] = [];
+      if (t.repeat === "daily") triggers.push({ id: t.id, trigger: { type: T.DAILY, hour, minute } });
+      else if (t.repeat === "weekdays") for (const weekday of [2, 3, 4, 5, 6]) triggers.push({ id: `${t.id}-${weekday}`, trigger: { type: T.WEEKLY, weekday, hour, minute } });
+      else if (t.repeat === "weekly") triggers.push({ id: t.id, trigger: { type: T.WEEKLY, weekday: parseDate(t.date!).getDay() + 1, hour, minute } });
+      else if (t.repeat === "monthly") triggers.push({ id: t.id, trigger: { type: T.MONTHLY, day: parseDate(t.date!).getDate(), hour, minute } });
+      else {
+        const at = dueAt(t, allDayTime)!;
+        // An all-day to-do created after its reminder time still gets a nudge today.
+        if (at <= now && !t.time && t.date === today(now) && now.getHours() < 21) at.setTime(now.getTime() + 60_000);
+        if (at <= now) continue;
+        triggers.push({ id: t.id, trigger: { type: T.DATE, date: at } });
+      }
+      for (const x of triggers) {
+        await Notifications.scheduleNotificationAsync({ identifier: `${TODO_PREFIX}${x.id}`, content, trigger: x.trigger });
+        count += 1;
+      }
+    }
+    log.info("todo reminders synced", { open: open.length, scheduled: count });
+  } catch (e) {
+    log.error("todo reminder sync failed", e);
+  }
 }

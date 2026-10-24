@@ -37,7 +37,8 @@ type Phase = "starting" | "recording" | "paused" | "saving" | "error";
 export default function Record() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ prompt?: string; followUpOf?: string }>();
+  const params = useLocalSearchParams<{ prompt?: string; followUpOf?: string; mode?: string }>();
+  const todoMode = params.mode === "todo";
   const recorder = useAudioRecorder(OPTIONS);
   const state = useAudioRecorderState(recorder, 100);
   const [phase, setPhase] = useState<Phase>("starting");
@@ -127,7 +128,7 @@ export default function Record() {
         if (!dest.exists || dest.size === 0) throw new Error("录音文件保存失败");
         stored = name;
       }
-      createVoiceEntry({ id, audioFile: stored, durationSec, prompt: params.prompt, followUpOf: params.followUpOf });
+      createVoiceEntry({ id, audioFile: stored, durationSec, prompt: params.prompt, followUpOf: params.followUpOf, ...(todoMode ? { mode: "todo" as const } : {}) });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace({ pathname: "/processing", params: { id } });
     } catch (e) {
@@ -164,7 +165,7 @@ export default function Record() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.primarySoft, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20, paddingHorizontal: 28 }}>
       <View style={{ alignItems: "center" }}>
-        <Bubble text={params.prompt ?? opener} mood={phase === "recording" ? "talk" : "smile"} />
+        <Bubble text={params.prompt ?? (todoMode ? "要我记住什么事？顺便说下时间，我到点提醒你。" : opener)} mood={phase === "recording" ? "talk" : "smile"} />
       </View>
 
       <Text style={{ fontFamily: fonts.serif, fontSize: 64, color: colors.text, textAlign: "center", marginTop: 48, fontVariant: ["tabular-nums"] }}>
@@ -184,7 +185,7 @@ export default function Record() {
           <Ionicons name={phase === "paused" ? "mic" : "pause"} size={28} color={colors.primaryDark} />
         </Pressable>
       </View>
-      <PillButton label="保存这条记录" icon="checkmark" onPress={() => void save()} loading={phase === "saving"} disabled={phase === "starting" || phase === "error"} />
+      <PillButton label={todoMode ? "说完了" : "保存这条记录"} icon="checkmark" onPress={() => void save()} loading={phase === "saving"} disabled={phase === "starting" || phase === "error"} />
       <Pressable onPress={cancel} style={{ alignSelf: "center", padding: 14 }}>
         <Text style={{ color: colors.textSoft, fontSize: 15 }}>取消</Text>
       </Pressable>

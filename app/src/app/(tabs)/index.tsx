@@ -2,13 +2,12 @@ import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomBar } from "@/components/BottomBar";
+import { BriefCard } from "@/components/BriefCard";
 import { EntryArt } from "@/components/EntryArt";
 import { EntryCard } from "@/components/EntryCard";
 import { Mascot } from "@/components/Mascot";
 import { MoodLegend } from "@/components/MoodLegend";
-import { Card, IconButton, Screen, SectionTitle, Sheet, Tag, styles as ui, tap } from "@/components/ui";
+import { Card, IconButton, Screen, SectionTitle, Sheet, TAB_BAR_SPACE, TabHeader, Tag, styles as ui, tap } from "@/components/ui";
 import { WeekStrip } from "@/components/WeekStrip";
 import { QUICK_PROMPTS } from "@/lib/prompts";
 import { comeBackEntries, sortedEntries, useStore } from "@/lib/store";
@@ -26,9 +25,9 @@ const INFO: Record<Exclude<Info, null | "mood">, { icon: keyof typeof Ionicons.g
 
 export default function Home() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const rawEntries = useStore((s) => s.entries);
   const settings = useStore((s) => s.settings);
+  const inbox = useStore((s) => s.inbox);
   const entries = useMemo(() => sortedEntries(rawEntries), [rawEntries]);
   const { isUpdatePending } = useUpdates();
   const [info, setInfo] = useState<Info>(null);
@@ -48,17 +47,17 @@ export default function Home() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingHorizontal: 18, paddingBottom: 130 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 22, paddingHorizontal: 4 }}>
-          {([
-            ["calendar-outline", "/calendar"],
-            ["time-outline", "/entries"],
-            ["chatbubble-ellipses-outline", "/chats"],
-            ["search-outline", "/search"],
-            ["settings-outline", "/settings"],
-          ] as const).map(([icon, path]) => (
-            <IconButton key={icon} name={icon} size={24} onPress={() => router.push(path as never)} />
-          ))}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: TAB_BAR_SPACE + 30 }}>
+        <View style={{ marginHorizontal: -18, marginBottom: 14 }}>
+          <TabHeader
+            large={false}
+            right={
+              <>
+                <IconButton name="search-outline" size={23} onPress={() => go("/search")} />
+                <IconButton name="create-outline" size={23} onPress={() => go("/write")} />
+              </>
+            }
+          />
         </View>
 
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -83,6 +82,18 @@ export default function Home() {
             <Text style={[ui.body, { marginTop: 4 }]}>在设置里填入访问令牌后，录音才能被转写和整理。</Text>
           </Card>
         ) : null}
+
+        {inbox.length ? (
+          <Card style={{ marginTop: 18, flexDirection: "row", alignItems: "center", gap: 10, borderColor: colors.primary }} onPress={() => go(`/confirm/${inbox[0].id}`)}>
+            <Ionicons name="mail-unread-outline" size={19} color={colors.primary} />
+            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }} numberOfLines={1}>
+              {inbox.length > 1 ? `${inbox.length} 条语音里有待办等你确认` : `“${inbox[0].text}”里有待办等你确认`}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+          </Card>
+        ) : null}
+
+        {settings.token ? <BriefCard /> : null}
 
         {comeBack.length ? (
           <>
@@ -109,7 +120,7 @@ export default function Home() {
               <EntryCard entry={latest} onPress={() => go(`/entry/${latest.id}`)} />
             ) : (
               <Card muted>
-                <Text style={ui.body}>还没有记录。点下面的「录音」，随便说点什么。</Text>
+                <Text style={ui.body}>还没有记录。点下面中间的麦克风，随便说点什么；说「提醒我…」会变成待办。</Text>
               </Card>
             )}
           </>
@@ -191,8 +202,6 @@ export default function Home() {
           ))}
         </ScrollView>
       </ScrollView>
-
-      <BottomBar onWrite={() => go("/write")} onRecord={() => go("/record")} onChat={() => go("/chats")} label="录音" />
 
       {info && info !== "mood" ? (
         <Sheet visible onClose={() => setInfo(null)} icon={<Ionicons name={INFO[info].icon} size={26} color={colors.primary} />} title={INFO[info].title} body={INFO[info].body} />

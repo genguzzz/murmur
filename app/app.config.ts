@@ -9,7 +9,7 @@ const build = process.env.BUILD_NUMBER ?? "0";
 // OTA updates only reach binaries with the same runtime version. Bump this
 // whenever native code changes (new/upgraded native module, plugin, permission,
 // Expo SDK upgrade), then cut a new IPA with scripts/release.sh.
-export const RUNTIME_VERSION = "2"; // 2: expo-notifications, automatic light/dark
+export const RUNTIME_VERSION = "3"; // 3: expo-blur, datetimepicker (2: expo-notifications, automatic light/dark)
 
 const config: ExpoConfig = {
   name: "Murmur",

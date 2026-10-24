@@ -8,12 +8,13 @@ import { useRouter } from "expo-router";
 import { File, Paths } from "expo-file-system";
 import * as Updates from "expo-updates";
 import { Mascot } from "@/components/Mascot";
+import { ensureReminderPermission } from "@/components/PermissionPrompt";
 import { Card, PillButton, Screen, Sheet, TopBar, styles as ui, tap, toast } from "@/components/ui";
 import { appVersion, describeError, ping, uploadLogs } from "@/lib/api";
 import { authenticateBiometric, biometricKind, disableLock } from "@/lib/lock";
 import { collectLogs, logger, recentLines, sessionId } from "@/lib/log";
-import { cancelRemember, ensurePermission, syncCheckins, type CheckinPrefs } from "@/lib/notify";
-import { debugSummary, exportJson, updateSettings, useStore, wipeAll } from "@/lib/store";
+import { cancelRemember, ensurePermission, permissionState, syncCheckins, type CheckinPrefs, type PermissionState } from "@/lib/notify";
+import { debugSummary, exportJson, resyncTodoReminders, updateSettings, useStore, wipeAll } from "@/lib/store";
 import { checkAndFetch, restartToApply, runningLabel, updatesEnabled } from "@/lib/updates";
 import { dayKey } from "@/lib/format";
 import { colors, radius } from "@/lib/theme";
@@ -28,13 +29,15 @@ const THEMES = [
 const LOOKS = [["original", "原版"], ["glasses", "戴眼镜"], ["beret", "贝雷帽"]] as const;
 const MORNING_TIMES = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"];
 const EVENING_TIMES = ["20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00"];
+const ALLDAY_TIMES = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "12:00"];
 
 export default function Settings() {
   const settings = useStore((s) => s.settings);
   const entries = useStore((s) => s.entries);
   const router = useRouter();
   const [bioKind, setBioKind] = useState<"faceid" | "touchid" | null>(null);
-  const [sheet, setSheet] = useState<null | "theme" | "look" | "morning" | "evening" | "remember">(null);
+  const [sheet, setSheet] = useState<null | "theme" | "look" | "morning" | "evening" | "remember" | "todo">(null);
+  const [perm, setPerm] = useState<PermissionState | null>(null);
   const [server, setServer] = useState(settings.server);
   const [token, setToken] = useState(settings.token);
   const [name, setName] = useState(settings.name);
@@ -47,6 +50,7 @@ export default function Settings() {
 
   useEffect(() => {
     void biometricKind().then(setBioKind);
+    void permissionState().then(setPerm);
   }, []);
   const bioName = bioKind === "touchid" ? "Touch ID" : "Face ID";
 
@@ -191,6 +195,12 @@ export default function Settings() {
             onChange={(v) => void setCheckins({ ...ck, evening: { ...ck.evening, enabled: v } }, v)}
             onPress={ck.evening.enabled ? () => setSheet("evening") : undefined}
           />
+          <NavRow
+            icon="checkmark-circle-outline"
+            title="待办提醒"
+            subtitle={perm === "granted" ? `到点提醒；只有日期的待办在 ${settings.todoAllDayTime} 提醒` : "通知未开启，待办不会按时提醒"}
+            onPress={() => setSheet("todo")}
+          />
           <Card onPress={() => setSheet("remember")} style={{ flexDirection: "row", alignItems: "center", gap: 14, marginTop: 6 }}>
             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name="sparkles" size={20} color={colors.primary} />
@@ -318,6 +328,29 @@ export default function Settings() {
           </View>
         </Sheet>
       ))}
+
+      <Sheet visible={sheet === "todo"} onClose={() => setSheet(null)} icon={<Ionicons name="checkmark-circle" size={26} color={colors.primary} />} title="待办提醒" body="有具体时间的待办到点提醒；只说了日期的，在下面这个时间提醒。" button="完成">
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 18, justifyContent: "center" }}>
+          {ALLDAY_TIMES.map((t) => (
+            <Pressable key={t} onPress={() => { tap(); updateSettings({ todoAllDayTime: t }); resyncTodoReminders(); }} style={{ width: 92, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: settings.todoAllDayTime === t ? colors.primary : colors.cardMuted, borderWidth: 1, borderColor: settings.todoAllDayTime === t ? colors.primary : colors.border }}>
+              <Text style={{ fontSize: 16, color: settings.todoAllDayTime === t ? colors.onPrimary : colors.text }}>{t}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {perm !== "granted" ? (
+          <PillButton
+            label="开启通知"
+            icon="notifications-outline"
+            variant="soft"
+            onPress={() => {
+              setSheet(null);
+              // Let this sheet finish dismissing; iOS drops a modal presented mid-dismiss.
+              setTimeout(() => void ensureReminderPermission().then(() => permissionState().then(setPerm)), 450);
+            }}
+            style={{ marginTop: 16 }}
+          />
+        ) : null}
+      </Sheet>
 
       <Sheet visible={sheet === "remember"} onClose={() => setSheet(null)} icon={<Ionicons name="sparkles" size={26} color={colors.primary} />} title="记得你说过的话" body={`每条记录整理完后，Murmur 会在第二天 ${ck.evening.time}（晚间签到的时间）用这条记录的追问提醒你，点开就能接着说。`} button={null}>
         <PillButton

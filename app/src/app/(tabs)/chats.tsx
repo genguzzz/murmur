@@ -1,14 +1,13 @@
-import { FlatList, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Card, EmptyState, PillButton, TopBar, styles as ui } from "@/components/ui";
+import { Card, EmptyState, PillButton, TAB_BAR_SPACE, TabHeader, styles as ui, tap } from "@/components/ui";
 import { createChat, useStore } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
 import { colors } from "@/lib/theme";
 
 export default function Chats() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const chats = useStore((s) => s.chats);
 
   const startNew = () => {
@@ -18,14 +17,17 @@ export default function Chats() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <TopBar title="对话" />
+      <TabHeader title="对话" right={<Pressable hitSlop={10} accessibilityLabel="新对话" onPress={() => { tap(); startNew(); }}><Ionicons name="add-circle-outline" size={25} color={colors.primary} /></Pressable>} />
       {chats.length === 0 ? (
-        <EmptyState text="你的对话都在这里" />
+        <View style={{ flex: 1, paddingBottom: TAB_BAR_SPACE }}>
+          <EmptyState text="问问你的日记：最近在烦什么？上周做成了什么？" />
+          <PillButton label="开始一段对话" icon="chatbubble" onPress={startNew} style={{ marginHorizontal: 40 }} />
+        </View>
       ) : (
         <FlatList
           data={[...chats].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))}
           keyExtractor={(c) => c.id}
-          contentContainerStyle={{ padding: 18, gap: 10, paddingBottom: 120 }}
+          contentContainerStyle={{ padding: 18, gap: 10, paddingBottom: TAB_BAR_SPACE + 30 }}
           renderItem={({ item }) => {
             const last = item.messages[item.messages.length - 1];
             return (
@@ -40,9 +42,6 @@ export default function Chats() {
           }}
         />
       )}
-      <View style={{ position: "absolute", left: 18, right: 18, bottom: insets.bottom + 12 }}>
-        <PillButton label="新对话" icon="chatbubble" onPress={startNew} />
-      </View>
     </View>
   );
 }

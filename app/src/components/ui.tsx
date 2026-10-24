@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 import { colors, fonts, radius, shadow } from "@/lib/theme";
 import { Doodles } from "./Doodles";
 import { Mascot } from "./Mascot";
+import { openDrawer } from "./drawerState";
 
 export const tap = () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -30,6 +31,41 @@ export function TopBar({ title, right }: { title?: string; right?: ReactNode }) 
       </Pressable>
       <Text style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: "600", color: colors.text }} numberOfLines={1}>{title ?? ""}</Text>
       <View style={{ width: 80, flexDirection: "row", justifyContent: "flex-end", gap: 18 }}>{right}</View>
+    </View>
+  );
+}
+
+// Space the floating glass tab bar covers at the bottom of tab screens.
+export const TAB_BAR_SPACE = 104;
+
+// Header for the four tab screens: drawer button, title, optional actions.
+export function TabHeader({ title, right, large = true }: { title?: string; right?: ReactNode; large?: boolean }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{ paddingTop: insets.top + 6, paddingHorizontal: 18, paddingBottom: 6 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", height: 40 }}>
+        <Pressable
+          hitSlop={12}
+          accessibilityLabel="打开菜单"
+          onPress={() => { tap(); openDrawer(); }}
+          style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, opacity: pressed ? 0.7 : 1, ...shadow() })}
+        >
+          <MenuGlyph />
+        </Pressable>
+        <View style={{ flex: 1 }} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>{right}</View>
+      </View>
+      {title && large ? <Text style={[styles.h1, { marginTop: 14 }]}>{title}</Text> : null}
+    </View>
+  );
+}
+
+// Two uneven strokes: a softer take on the hamburger that fits the hand-drawn style.
+function MenuGlyph() {
+  return (
+    <View style={{ gap: 5 }}>
+      <View style={{ width: 18, height: 2.2, borderRadius: 2, backgroundColor: colors.text }} />
+      <View style={{ width: 12, height: 2.2, borderRadius: 2, backgroundColor: colors.text }} />
     </View>
   );
 }
@@ -177,20 +213,21 @@ export function Sheet({ visible, onClose, icon, title, body, children, button = 
 
 // ---------- toast ----------
 
-type ToastMsg = { id: number; title: string; body?: string };
+type ToastAction = { label: string; onPress: () => void };
+type ToastMsg = { id: number; title: string; body?: string; action?: ToastAction };
 let toastState: ToastMsg | null = null;
 const toastListeners = new Set<() => void>();
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function toast(title: string, body?: string) {
-  toastState = { id: Date.now(), title, body };
+export function toast(title: string, body?: string, action?: ToastAction) {
+  toastState = { id: Date.now(), title, body, action };
   toastListeners.forEach((l) => l());
   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     toastState = null;
     toastListeners.forEach((l) => l());
-  }, 3500);
+  }, action ? 5000 : 3500);
 }
 
 export function ToastHost() {
@@ -204,7 +241,7 @@ export function ToastHost() {
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 84, zIndex: 300, opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }}
+      style={{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + TAB_BAR_SPACE - 10, zIndex: 300, opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.sheet, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: colors.border, ...shadow() }}>
         <Mascot size={38} />
@@ -212,9 +249,15 @@ export function ToastHost() {
           <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}>{msg.title}</Text>
           {msg.body ? <Text style={{ color: colors.textSoft, fontSize: 13, marginTop: 2 }}>{msg.body}</Text> : null}
         </View>
-        <Pressable hitSlop={10} onPress={() => { toastState = null; toastListeners.forEach((l) => l()); }}>
-          <Ionicons name="close" size={18} color={colors.textSoft} />
-        </Pressable>
+        {msg.action ? (
+          <Pressable hitSlop={8} onPress={() => { tap(); msg.action!.onPress(); toastState = null; toastListeners.forEach((l) => l()); }} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.primarySoft }}>
+            <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>{msg.action.label}</Text>
+          </Pressable>
+        ) : (
+          <Pressable hitSlop={10} onPress={() => { toastState = null; toastListeners.forEach((l) => l()); }}>
+            <Ionicons name="close" size={18} color={colors.textSoft} />
+          </Pressable>
+        )}
       </View>
     </Animated.View>
   );

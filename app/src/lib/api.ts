@@ -3,6 +3,7 @@ import * as Application from "expo-application";
 import { File, Paths } from "expo-file-system";
 import { logger } from "./log";
 import { runningLabel } from "./updates";
+import type { TodoDraft } from "./todo";
 
 const log = logger("api");
 
@@ -163,6 +164,45 @@ export function search(query: string, entries: (EntryContext & { index: number }
 
 export function chat(messages: { role: "user" | "assistant"; content: string }[], entries: EntryContext[]) {
   return request<{ reply: string }>("/v1/chat", { method: "POST", json: { messages, entries }, timeoutMs: 180_000, tag: "chat" });
+}
+
+export interface Intent {
+  kind: "note" | "todo" | "mixed";
+  todos: TodoDraft[];
+  completes: { index: number; reason: string }[];
+  reply: string;
+}
+
+export interface IntentRequest {
+  text: string;
+  now: string;
+  tz: string;
+  hint: "auto" | "todo";
+  openTodos: { index: number; title: string; due?: string }[];
+  defaults: { morning: string; evening: string };
+}
+
+export function intent(body: IntentRequest) {
+  return request<Intent>("/v1/intent", { method: "POST", json: body, timeoutMs: 60_000, tag: "intent" });
+}
+
+export interface Brief {
+  headline: string;
+  body: string;
+  focus: { index: number; why: string }[];
+  nudges: { index: number; text: string; action: "tomorrow" | "done" | "open" | "split" }[];
+}
+
+export interface BriefRequest {
+  now: string;
+  name?: string;
+  todos: { index: number; title: string; due?: string; overdueDays?: number; ageDays: number; postponed?: number }[];
+  done: { title: string; when: string }[];
+  entries: { date: string; title: string; summary: string; mood?: string }[];
+}
+
+export function brief(body: BriefRequest) {
+  return request<Brief>("/v1/brief", { method: "POST", json: body, timeoutMs: 60_000, tag: "brief" });
 }
 
 export function ping() {

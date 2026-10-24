@@ -21,7 +21,7 @@ export class RefusalError extends Error {}
 
 // One call shape for everything: Sonnet 5 with adaptive thinking,
 // server-side refusal fallback, optional JSON-schema structured output.
-async function call(opts: {
+export async function call(opts: {
   system: string;
   messages: Anthropic.Beta.BetaMessageParam[];
   effort: Effort;

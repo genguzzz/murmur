@@ -8,6 +8,7 @@ import { z } from "zod";
 import { config } from "./config.ts";
 import { transcribe, UpstreamError } from "./groq.ts";
 import { analyzeEntry, chat, insightsFor, RefusalError, semanticSearch } from "./claude.ts";
+import { briefFor, detectIntent } from "./todos.ts";
 import { publishIpa, PublishConflict } from "./publish.ts";
 import { listUpdates, manifestResponse, storeUpdate } from "./updates.ts";
 
@@ -169,6 +170,37 @@ app.post("/v1/chat", async (req) => {
   const { reply, meta } = await chat(body);
   req.log.info({ claude: meta, turns: body.messages.length, entries: body.entries.length }, "chat");
   return { reply };
+});
+
+app.post("/v1/intent", async (req) => {
+  const body = z
+    .object({
+      text: z.string().min(1),
+      now: z.string().min(1),
+      tz: z.string().default(""),
+      hint: z.enum(["auto", "todo"]).default("auto"),
+      openTodos: z.array(z.object({ index: z.number(), title: z.string(), due: z.string().optional() })).default([]),
+      defaults: z.object({ morning: z.string(), evening: z.string() }).default({ morning: "09:00", evening: "20:00" }),
+    })
+    .parse(req.body);
+  const { intent, meta } = await detectIntent(body);
+  req.log.info({ claude: meta, chars: body.text.length, hint: body.hint, kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length }, "intent");
+  return intent;
+});
+
+app.post("/v1/brief", async (req) => {
+  const body = z
+    .object({
+      now: z.string().min(1),
+      name: z.string().optional(),
+      todos: z.array(z.object({ index: z.number(), title: z.string(), due: z.string().optional(), overdueDays: z.number().optional(), ageDays: z.number(), postponed: z.number().optional() })).default([]),
+      done: z.array(z.object({ title: z.string(), when: z.string() })).default([]),
+      entries: z.array(z.object({ date: z.string(), title: z.string(), summary: z.string(), mood: z.string().optional() })).default([]),
+    })
+    .parse(req.body);
+  const { brief, meta } = await briefFor(body);
+  req.log.info({ claude: meta, todos: body.todos.length, entries: body.entries.length }, "brief");
+  return brief;
 });
 
 // Debug log upload from Settings → 上传日志. Stored as <id>.log + <id>.json.

@@ -3,7 +3,7 @@ import { FlatList, Pressable, ScrollView, Text, TextInput, View } from "react-na
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { EntryCard } from "@/components/EntryCard";
-import { EmptyState, TopBar, styles as ui } from "@/components/ui";
+import { EmptyState, TAB_BAR_SPACE, TabHeader, styles as ui } from "@/components/ui";
 import { sortedEntries, useStore, type Entry } from "@/lib/store";
 import { dayKey, shortDate } from "@/lib/format";
 import { colors, radius } from "@/lib/theme";
@@ -46,8 +46,8 @@ export default function Entries() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <TopBar title="全部记录" right={<Pressable hitSlop={10} onPress={() => router.push("/calendar")}><Ionicons name="calendar-outline" size={21} color={colors.textSoft} /></Pressable>} />
-      <View style={{ paddingHorizontal: 18 }}>
+      <TabHeader title="记录" right={<Pressable hitSlop={10} onPress={() => router.push("/calendar")}><Ionicons name="calendar-outline" size={22} color={colors.textSoft} /></Pressable>} />
+      <View style={{ paddingHorizontal: 18, marginTop: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.card, borderRadius: radius.md, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border }}>
           <Ionicons name="search" size={17} color={colors.textFaint} />
           <TextInput
@@ -76,7 +76,7 @@ export default function Entries() {
         <FlatList
           data={rows}
           keyExtractor={(r) => r.key}
-          contentContainerStyle={{ padding: 18, paddingBottom: 60, gap: 10 }}
+          contentContainerStyle={{ padding: 18, paddingBottom: TAB_BAR_SPACE + 30, gap: 10 }}
           renderItem={({ item }) =>
             item.type === "day" ? (
               <Text style={[ui.faint, { fontWeight: "700", marginTop: 8 }]}>{item.label}</Text>

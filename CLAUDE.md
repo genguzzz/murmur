@@ -1,0 +1,39 @@
+# Murmur — working rules
+
+Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo Router); `server/` is Node 22 + Fastify run with type stripping; `.github/workflows/ios.yml` builds an unsigned IPA that the user signs on the phone. README.md covers setup; this file is the rules and the traps.
+
+## Ship it
+
+- Commit straight to `main`; no branches/PRs. Never commit secrets: API keys and tokens live only in the server's `/opt/voicememo/.env`.
+- Before every commit: `cd app && npx tsc --noEmit && npx eslint src`, and `cd server && npx tsc --noEmit -p .` (typecheck locally; the server host only has prod deps).
+- Server change → `server/deploy/deploy.sh`, then hit the new route with curl (token: `ssh greencloud grep ^APP_TOKEN= /opt/voicememo/.env`).
+- JS-only app change → `scripts/ota.sh "说明"` (~1 min). Pushing `main` only builds; it doesn't publish.
+- Native change (new/upgraded native package, config plugin, permission, SDK) → bump `RUNTIME_VERSION` in `app/app.config.ts` with a note, then `scripts/release.sh X.Y.Z "新增：…；修复：…"`. The tag build publishes the IPA to the software source; OTA can't reach older runtimes.
+- Order when both change: deploy server first (old apps must keep working), then OTA/release.
+
+## App conventions
+
+- Navigation: four tabs in `src/app/(tabs)/` (首页 · 待办 · 记录 · 对话) under a floating frosted `GlassTabBar` with the record button in the middle (long-press = type). Everything else opens from the left drawer (`components/Drawer.tsx`) or is a stack screen with `TopBar`. New top-level features go in the drawer unless they're daily-use.
+- Tab screens start with `TabHeader` and pad the bottom by `TAB_BAR_SPACE`.
+- Theme: `colors` is a mutable palette swapped by `applyScheme`; read `colors.x` during render (or use `styles` getters / `shadow()`), never capture it at module scope or in `StyleSheet.create`.
+- UI copy is Simplified Chinese, short and warm; the mascot speaks in `SpeechBubble`s. Every tap gets haptics (`tap()`, `PillButton` does it); confirmations use `toast()` — pass an action for undo.
+- State lives in one JSON file via `lib/store.ts` (`setState` → debounced atomic save). Add fields with defaults in `DEFAULT_STATE`; `loadState` merges, so old files keep working.
+- Logging: `logger("area")`; log ids, counts, timings, errors — never journal text or transcripts. Users debug via Settings → 上传日志; read it on the server at `/opt/voicememo/data/logs/<id>.log`.
+- React compiler lint is on: no reading refs during render, no `Date.now()`/`new Date()` in render (keep `now` in state), no `setState` straight inside effects.
+
+## To-dos and the model
+
+- Every memo goes through `/v1/intent` after transcription (`routeIntent` in the store): `note` → journal; `todo` → removed from the journal into `inbox` and confirmed on `/confirm/[id]`; `mixed` → both. Intent failures fall back to a note, except in to-do mode, where they surface as a retryable error.
+- The model asks follow-ups through `question` + `options` on each draft; the confirm screen always adds 不设时间 and 自己选. Keep it to one question per task.
+- Reminders are local notifications rebuilt from scratch by `syncTodoReminders` after any change (iOS caps pending notifications at 64; we schedule ≤40). Call `ensureReminderPermission()` (in-app explainer, then the system prompt, or a route to Settings if denied) before relying on a reminder.
+- Prompts live next to their schemas in `server/src/claude.ts` / `todos.ts`: Chinese system prompt, JSON-schema output with field descriptions, `effort: "low"` for interactive calls. Validate any index the model returns against what you sent.
+
+## Traps already hit
+
+- `fetch` is `expo/fetch`: its FormData rejects RN `{ uri }` parts. Append an expo-file-system `File`.
+- expo-file-system `copy()`/`move()` are async; deleting the source right after lost recordings once. Use `moveSync`/`copySync` and check the size.
+- Self-signed builds have no push entitlement: notifications are local only (`enableRemoteNotifications: false`).
+- Face ID `lockout` comes back instantly until the device passcode is entered; `authenticateBiometric` retries with the passcode fallback.
+- Don't present an RN `Modal` while another is still dismissing (iOS drops it); wait ~450 ms.
+- Server-side Claude calls must go out through the residential proxy (`server/src/upstream.ts`, `LLM_PROXY`), with no direct fallback; Groq transcription goes direct. Check any new LLM call uses `upstreamFetch`.
+- No model identifiers in commit messages or PR text.

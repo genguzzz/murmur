@@ -4,13 +4,15 @@ import { Stack, usePathname, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Device from "expo-device";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { DrawerHost } from "@/components/Drawer";
 import { LockScreen } from "@/components/LockScreen";
 import { Mascot } from "@/components/Mascot";
+import { PermissionHost } from "@/components/PermissionPrompt";
 import { ToastHost } from "@/components/ui";
 import { startLockWatcher, useLocked } from "@/lib/lock";
 import { appVersion } from "@/lib/api";
 import { flush, installGlobalHandlers, logger, pruneLogs, sessionId } from "@/lib/log";
-import { getState, loadState, resumePending, useLoaded, useStore } from "@/lib/store";
+import { getState, loadState, resumePending, resyncTodoReminders, useLoaded, useStore } from "@/lib/store";
 import { applyScheme, colors, type Scheme } from "@/lib/theme";
 import { logRunningUpdate, startForegroundChecks } from "@/lib/updates";
 import { installNotificationHandler, onNotificationTap, syncCheckins } from "@/lib/notify";
@@ -30,6 +32,7 @@ void loadState(startLockWatcher).then(() => {
   pruneLogs();
   resumePending();
   void syncCheckins(getState().settings.checkins);
+  resyncTodoReminders();
 });
 
 export default function RootLayout() {
@@ -64,6 +67,8 @@ export default function RootLayout() {
       log.info("appstate", { state: s });
       setAppState(s);
       if (s !== "active") void flush();
+      // Picks up a permission granted in iOS Settings and rolls repeating to-dos forward.
+      else resyncTodoReminders();
     });
     return () => sub.remove();
   }, []);
@@ -73,13 +78,17 @@ export default function RootLayout() {
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       {loaded ? (
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="confirm/[id]" options={{ presentation: "modal" }} />
           <Stack.Screen name="record" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
           <Stack.Screen name="processing" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
           <Stack.Screen name="write" options={{ presentation: "modal" }} />
           <Stack.Screen name="edit/[id]" options={{ presentation: "modal" }} />
         </Stack>
       ) : null}
+      {loaded ? <DrawerHost /> : null}
       {loaded ? <ToastHost /> : null}
+      {loaded ? <PermissionHost /> : null}
       {loaded && locked ? <LockScreen /> : null}
       {loaded && lockEnabled && !locked && appState !== "active" ? (
         // Hides journal content in the app switcher snapshot.

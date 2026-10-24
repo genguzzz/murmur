@@ -1,6 +1,6 @@
 # Murmur
 
-A personal voice journal, inspired by Lound. Talk, and it turns the ramble into a titled, summarized entry with mood, themes and a follow-up question; chat with your journal and see patterns across entries.
+A personal voice journal, inspired by Lound. Talk, and it turns the ramble into a titled, summarized entry with mood, themes and a follow-up question; chat with your journal and see patterns across entries. Say "remind me…" and it becomes a dated to-do instead (with a follow-up question when the time is unclear), reminded by local notifications and reviewed on Home each day.
 
 - **app/** — Expo (React Native, TypeScript, Expo Router). iOS + Android from one codebase. Recordings and entries stay on the device.
 - **server/** — Node 22 + Fastify (TypeScript, run directly with Node's type stripping). Groq Whisper for transcription, Claude for analysis/chat. Audio is processed in memory and never stored.

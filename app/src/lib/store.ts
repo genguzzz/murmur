@@ -6,7 +6,8 @@ import { Directory, File, Paths } from "expo-file-system";
 import * as api from "./api";
 import { logger } from "./log";
 import { countWords, dayKey } from "./format";
-import { scheduleRemember, type CheckinPrefs } from "./notify";
+import { scheduleRemember, syncTodoReminders, type CheckinPrefs } from "./notify";
+import { addDays, dueLabel, isOverdue, localNow, nextOccurrence, overdueDays, sortTodos, timeZone, today, type Todo, type TodoDraft } from "./todo";
 
 const log = logger("store");
 
@@ -39,6 +40,33 @@ export interface Entry {
   words?: number;
   keepOnHome?: boolean; // pinned to Home's "回头再看"
   returnAt?: string; // resurfaces on Home from this time
+  mode?: "todo"; // recorded from the to-do tab: lean towards making tasks
+  intentChecked?: boolean; // note-vs-todo detection already ran
+  skipIntent?: boolean; // user said "this is a note", don't ask again
+}
+
+// A memo the model turned into to-dos, waiting for the user to confirm.
+// kind "todo" memos never become journal entries; "mixed" ones also have `journalId`.
+export interface PendingIntent {
+  id: string;
+  createdAt: string;
+  kind: "todo" | "mixed";
+  source: "voice" | "text";
+  text: string;
+  reply: string;
+  drafts: TodoDraft[];
+  completes: { todoId: string; title: string; reason: string }[];
+  journalId?: string;
+  audioFile?: string;
+  durationSec?: number;
+  prompt?: string;
+}
+
+export interface BriefCache {
+  key: string;
+  at: string;
+  data: api.Brief;
+  ids: string[]; // brief index → todo id
 }
 
 export interface ChatMessage {
@@ -67,6 +95,7 @@ export interface Settings {
   theme: "system" | "light" | "dark";
   look: "original" | "glasses" | "beret";
   checkins: CheckinPrefs;
+  todoAllDayTime: string; // reminder time for to-dos with a date but no time
   memberSince?: string;
 }
 
@@ -81,17 +110,23 @@ interface State {
   chats: Chat[];
   settings: Settings;
   insights?: InsightsCache;
+  todos: Todo[];
+  inbox: PendingIntent[];
+  brief?: BriefCache;
 }
 
 const DEFAULT_STATE: State = {
   entries: [],
   chats: [],
+  todos: [],
+  inbox: [],
   settings: { server: api.DEFAULT_SERVER, token: "", language: "auto", name: "", lockEnabled: false,
     lockBiometrics: false,
     lockDelaySec: 60,
     theme: "system",
     look: "original",
     checkins: { morning: { enabled: false, time: "08:30" }, evening: { enabled: false, time: "21:30" }, remember: false },
+    todoAllDayTime: "09:00",
   },
 };
 
@@ -136,7 +171,7 @@ export async function loadState(beforeReady?: () => void): Promise<void> {
         settings: { ...DEFAULT_STATE.settings, ...parsed.settings },
       };
     }
-    log.info("state loaded", { entries: state.entries.length, chats: state.chats.length, hasToken: !!state.settings.token });
+    log.info("state loaded", { entries: state.entries.length, chats: state.chats.length, todos: state.todos.length, inbox: state.inbox.length, hasToken: !!state.settings.token });
   } catch (e) {
     log.error("state load failed", e);
   }
@@ -231,7 +266,7 @@ export function sortedEntries(entries: Entry[]): Entry[] {
   return [...entries].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export function createVoiceEntry(opts: { id: string; audioFile: string; durationSec: number; prompt?: string; followUpOf?: string }): Entry {
+export function createVoiceEntry(opts: { id: string; audioFile: string; durationSec: number; prompt?: string; followUpOf?: string; mode?: "todo" }): Entry {
   const entry: Entry = { ...opts, createdAt: new Date().toISOString(), kind: "voice", status: "transcribing" };
   setState((s) => ({ ...s, entries: [entry, ...s.entries] }));
   log.info("voice entry created", { id: entry.id, durationSec: opts.durationSec, prompt: !!opts.prompt });
@@ -331,6 +366,10 @@ export async function processEntry(id: string): Promise<void> {
     }
     e = getEntry(id)!;
     patchEntry(id, { status: "analyzing", error: undefined });
+    if (!e.intentChecked && !e.skipIntent) {
+      if ((await routeIntent(e)) === "moved") return;
+      e = getEntry(id)!;
+    }
     const recent = sortedEntries(state.entries)
       .filter((x) => x.id !== id && x.status === "done")
       .slice(0, 8)
@@ -359,6 +398,54 @@ export async function processEntry(id: string): Promise<void> {
     patchEntry(id, { status: "failed", error: api.describeError(err) });
   } finally {
     running.delete(id);
+  }
+}
+
+function intentRequest(text: string, hint: "auto" | "todo"): api.IntentRequest {
+  const open = openTodos();
+  return {
+    text,
+    now: localNow(),
+    tz: timeZone(),
+    hint,
+    openTodos: open.map((t, index) => ({ index, title: t.title, ...(t.date ? { due: dueLabel(t) } : {}) })),
+    defaults: { morning: state.settings.todoAllDayTime, evening: "20:00" },
+  };
+}
+
+function toPending(base: Omit<PendingIntent, "drafts" | "completes" | "reply" | "kind">, intent: api.Intent, open: Todo[]): PendingIntent {
+  return {
+    ...base,
+    kind: intent.kind === "mixed" ? "mixed" : "todo",
+    reply: intent.reply,
+    drafts: intent.todos,
+    completes: intent.completes.filter((c) => open[c.index]).map((c) => ({ todoId: open[c.index].id, title: open[c.index].title, reason: c.reason })),
+  };
+}
+
+// Note or to-do? "moved" = the memo was only tasks and now waits in the inbox.
+async function routeIntent(e: Entry): Promise<"note" | "mixed" | "moved"> {
+  const hint = e.mode === "todo" ? "todo" : "auto";
+  try {
+    const open = openTodos();
+    const intent = await api.intent(intentRequest(e.rawText!, hint));
+    patchEntry(e.id, { intentChecked: true });
+    log.info("intent", { id: e.id, hint, kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length });
+    if (intent.kind === "note" || (!intent.todos.length && !intent.completes.length)) return "note";
+    const base = { id: e.id, createdAt: e.createdAt, source: e.kind, text: e.rawText!, audioFile: e.audioFile, durationSec: e.durationSec, prompt: e.prompt };
+    if (intent.kind === "mixed") {
+      const p = toPending({ ...base, id: newId(), journalId: e.id }, intent, open);
+      setState((s) => ({ ...s, inbox: [p, ...s.inbox] }));
+      return "mixed";
+    }
+    const p = toPending(base, intent, open);
+    setState((s) => ({ ...s, entries: s.entries.filter((x) => x.id !== e.id), inbox: [p, ...s.inbox] }));
+    return "moved";
+  } catch (err) {
+    // A to-do memo can be retried; a journal memo shouldn't be held up by this step.
+    if (hint === "todo") throw err;
+    log.warn("intent failed, keeping as note", { id: e.id, err });
+    return "note";
   }
 }
 
@@ -458,8 +545,201 @@ export function debugSummary() {
     byStatus,
     failed: state.entries.filter((e) => e.status === "failed").slice(0, 10).map((e) => ({ id: e.id, error: e.error, kind: e.kind })),
     chats: state.chats.length,
+    todos: { open: state.todos.filter((t) => !t.doneAt).length, done: state.todos.filter((t) => t.doneAt).length },
+    inbox: state.inbox.length,
     server: state.settings.server,
     hasToken: !!state.settings.token,
     language: state.settings.language,
   };
+}
+
+// ---------- to-dos ----------
+
+export function openTodos(): Todo[] {
+  return sortTodos(state.todos.filter((t) => !t.doneAt), state.settings.todoAllDayTime);
+}
+
+function setTodos(fn: (todos: Todo[]) => Todo[]) {
+  setState((s) => ({ ...s, todos: fn(s.todos) }));
+  syncTodoReminders(state.todos, state.settings.todoAllDayTime);
+}
+
+export function resyncTodoReminders() {
+  syncTodoReminders(state.todos, state.settings.todoAllDayTime);
+}
+
+export function addTodos(drafts: Pick<TodoDraft, "title" | "note" | "date" | "time" | "repeat" | "priority">[], source: Todo["source"]): Todo[] {
+  const now = new Date().toISOString();
+  const created: Todo[] = drafts
+    .filter((d) => d.title.trim())
+    .map((d) => ({
+      id: newId(),
+      title: d.title.trim(),
+      ...(d.note.trim() ? { note: d.note.trim() } : {}),
+      ...(d.date ? { date: d.date } : {}),
+      ...(d.date && d.time ? { time: d.time } : {}),
+      repeat: d.date ? d.repeat : "none",
+      priority: d.priority,
+      createdAt: now,
+      source,
+    }));
+  setTodos((list) => [...created, ...list]);
+  log.info("todos added", { n: created.length, dated: created.filter((t) => t.date).length, source });
+  return created;
+}
+
+export function updateTodo(id: string, patch: Partial<Todo>) {
+  setTodos((list) => list.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  log.info("todo updated", { id, fields: Object.keys(patch) });
+}
+
+export function deleteTodo(id: string) {
+  setTodos((list) => list.filter((t) => t.id !== id));
+  log.info("todo deleted", { id });
+}
+
+// Returns the next date for a repeating to-do (which stays open), else undefined.
+export function completeTodo(id: string): string | undefined {
+  const t = state.todos.find((x) => x.id === id);
+  if (!t) return;
+  const now = new Date().toISOString();
+  if (t.repeat !== "none" && t.date) {
+    const next = nextOccurrence(t);
+    updateTodo(id, { date: next, lastDoneAt: now });
+    return next;
+  }
+  updateTodo(id, { doneAt: now });
+}
+
+export function reopenTodo(id: string) {
+  updateTodo(id, { doneAt: undefined });
+}
+
+export function postponeTodo(id: string) {
+  const t = state.todos.find((x) => x.id === id);
+  if (!t) return;
+  const base = t.date && t.date > today() ? t.date : today();
+  updateTodo(id, { date: addDays(base, 1), postponed: (t.postponed ?? 0) + 1 });
+}
+
+export function clearDoneTodos() {
+  setTodos((list) => list.filter((t) => !t.doneAt));
+}
+
+// ---------- pending intents (inbox) ----------
+
+export function getPending(id: string): PendingIntent | undefined {
+  return state.inbox.find((p) => p.id === id || p.journalId === id);
+}
+
+function dropPending(id: string, deleteAudio: boolean) {
+  const p = state.inbox.find((x) => x.id === id);
+  if (deleteAudio && p?.audioFile && !p.journalId && !isWeb) {
+    try {
+      const f = audioFile(p.audioFile);
+      if (f.exists) f.delete();
+    } catch (err) {
+      log.warn("pending audio delete failed", { id, err });
+    }
+  }
+  setState((s) => ({ ...s, inbox: s.inbox.filter((x) => x.id !== id) }));
+}
+
+export function confirmPending(id: string, drafts: TodoDraft[], completeIds: string[]): Todo[] {
+  const p = state.inbox.find((x) => x.id === id);
+  if (!p) return [];
+  const created = addTodos(drafts, p.source);
+  for (const tid of completeIds) completeTodo(tid);
+  dropPending(id, true);
+  log.info("pending confirmed", { id, created: created.length, completed: completeIds.length });
+  return created;
+}
+
+export function dismissPending(id: string) {
+  dropPending(id, true);
+  log.info("pending dismissed", { id });
+}
+
+// "This was a note after all": turn the memo back into a journal entry.
+export function pendingAsNote(id: string): string | undefined {
+  const p = state.inbox.find((x) => x.id === id);
+  if (!p) return;
+  if (p.journalId) {
+    dropPending(id, false);
+    return p.journalId;
+  }
+  const entry: Entry = {
+    id: p.id,
+    createdAt: p.createdAt,
+    kind: p.source,
+    status: "analyzing",
+    rawText: p.text,
+    audioFile: p.audioFile,
+    durationSec: p.durationSec,
+    prompt: p.prompt,
+    skipIntent: true,
+  };
+  setState((s) => ({ ...s, entries: [entry, ...s.entries.filter((e) => e.id !== p.id)], inbox: s.inbox.filter((x) => x.id !== id) }));
+  log.info("pending kept as note", { id });
+  void processEntry(entry.id);
+  return entry.id;
+}
+
+// Typed quick-add on the to-do tab. Clear requests are created straight away;
+// anything the model wants to ask about goes to the confirm screen.
+export async function quickAddTodo(text: string): Promise<{ created: Todo[]; reply: string; completed: string[] } | { pendingId: string }> {
+  const open = openTodos();
+  const intent = await api.intent(intentRequest(text, "todo"));
+  log.info("quick add", { kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length });
+  const p = toPending({ id: newId(), createdAt: new Date().toISOString(), source: "text", text }, { ...intent, kind: "todo" }, open);
+  const needsInput = p.drafts.some((d) => d.question) || p.completes.length > 0 || p.drafts.length === 0;
+  if (needsInput) {
+    if (!p.drafts.length && !p.completes.length) {
+      // Nothing recognisable: keep the user's words as the task.
+      p.drafts = [{ title: text.trim(), note: "", date: "", time: "", repeat: "none", priority: "normal", question: "", options: [] }];
+    }
+    setState((s) => ({ ...s, inbox: [p, ...s.inbox] }));
+    return { pendingId: p.id };
+  }
+  return { created: addTodos(p.drafts, "text"), reply: intent.reply, completed: [] };
+}
+
+// ---------- Home brief ----------
+
+// Changes when the inputs that matter change: day, open to-dos, journal size.
+export function briefKey(): string {
+  const open = openTodos().map((t) => `${t.id}:${t.date ?? ""}:${t.time ?? ""}`).join(",");
+  const doneCount = state.todos.filter((t) => t.doneAt || t.lastDoneAt).length;
+  return `${today()}|${open}|${state.entries.length}|${doneCount}`;
+}
+
+export async function refreshBrief(): Promise<void> {
+  const key = briefKey();
+  const now = new Date();
+  const open = openTodos().slice(0, 30);
+  const dayMs = 86400_000;
+  const recentDone = state.todos
+    .map((t) => ({ t, at: t.doneAt ?? t.lastDoneAt }))
+    .filter((x): x is { t: Todo; at: string } => !!x.at && now.getTime() - new Date(x.at).getTime() < 3 * dayMs)
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 8);
+  const data = await api.brief({
+    now: localNow(now),
+    ...(state.settings.name ? { name: state.settings.name } : {}),
+    todos: open.map((t, index) => ({
+      index,
+      title: t.title,
+      ...(t.date ? { due: dueLabel(t, now) } : {}),
+      ...(isOverdue(t, now) ? { overdueDays: Math.max(1, overdueDays(t, now)) } : {}),
+      ageDays: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / dayMs),
+      ...(t.postponed ? { postponed: t.postponed } : {}),
+    })),
+    done: recentDone.map((x) => ({ title: x.t.title, when: dayKey(x.at) === today(now) ? "今天" : dayKey(x.at) })),
+    entries: sortedEntries(state.entries)
+      .filter((e) => e.status === "done")
+      .slice(0, 6)
+      .map((e) => ({ date: dayKey(e.createdAt), title: e.title ?? "", summary: e.summary ?? "", ...(e.moodLabel ? { mood: e.moodLabel } : {}) })),
+  });
+  setState((s) => ({ ...s, brief: { key, at: new Date().toISOString(), data, ids: open.map((t) => t.id) } }));
+  log.info("brief refreshed", { todos: open.length, focus: data.focus.length, nudges: data.nudges.length });
 }
