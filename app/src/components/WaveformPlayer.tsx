@@ -10,7 +10,7 @@ import { audioFile, setWaveform, updateSettings, useStore, type Entry } from "@/
 import { track } from "@/lib/track";
 import { colors } from "@/lib/theme";
 
-const RATES = [1, 1.25, 1.5, 2, 0.75];
+const RATES = [1, 1.5, 2, 0.75];
 const BAR = 2.5;
 const GAP = 2;
 const HEIGHT = 34;
@@ -93,7 +93,8 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
   const uri = Platform.OS === "web" ? entry.audioFile! : audioFile(entry.audioFile!).uri;
   const player = useAudioPlayer(uri, { updateInterval: 200 });
   const status = useAudioPlayerStatus(player);
-  const rate = useStore((s) => s.settings.playbackRate) || 1;
+  const stored = useStore((s) => s.settings.playbackRate);
+  const rate = RATES.includes(stored) ? stored : 1;
   const [width, setWidth] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null); // 0..1 while dragging
   const [learned, setLearned] = useState<number[] | null>(null);

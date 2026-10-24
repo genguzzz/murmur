@@ -51,6 +51,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - Self-signed builds have no push entitlement: notifications are local only (`enableRemoteNotifications: false`).
 - Face ID `lockout` comes back instantly until the device passcode is entered; `authenticateBiometric` retries with the passcode fallback.
 - After a successful Face ID scan iOS keeps the app `inactive` for ~2 s; anything keyed on AppState (the privacy cover) must ignore that window (`isAuthenticating()`).
+- iOS 26 turns on full-screen back-swipe for native stacks; we set `fullScreenGestureEnabled: false` on the root Stack so only the left edge goes back. The drawer's own swipe zone is 36 px (`EDGE` in Drawer.tsx); the user found 18 too stingy and 72 too eager.
 - Don't present an RN `Modal` while another is still dismissing (iOS drops it); wait ~450 ms.
 - Server-side Claude calls must go out through the residential proxy (`server/src/upstream.ts`, `LLM_PROXY`), with no direct fallback; Groq transcription goes direct. Check any new LLM call uses `upstreamFetch`.
 - No model identifiers in commit messages or PR text.

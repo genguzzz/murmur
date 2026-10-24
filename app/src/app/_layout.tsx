@@ -92,12 +92,14 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  // fullScreenGestureEnabled: false — iOS 26 makes back-swipe work from anywhere on
+  // the screen, which fired too easily; keep it to the left edge.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider key={scheme}>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
         {loaded ? (
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, fullScreenGestureEnabled: false }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="confirm/[id]" options={{ presentation: "modal" }} />
             <Stack.Screen name="record" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
