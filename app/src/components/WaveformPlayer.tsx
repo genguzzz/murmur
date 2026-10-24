@@ -58,14 +58,15 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
   const rate = RATES.includes(stored) ? stored : 1;
   const [width, setWidth] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null); // 0..1 while dragging
-  const [learned, setLearned] = useState<number[] | null>(null);
+  // Target of the last seek, shown until the player reports it (avoids a flash back).
+  const [pending, setPending] = useState<number | null>(null);
+  const seekSeq = useRef(0);
   const bins = useRef<number[]>([]);
-  const lastPush = useRef(0);
 
   const duration = status.duration || entry.durationSec || 0;
   const title = entry.title || "语音记录";
   const subtitle = `${shortDate(entry.createdAt)} · Murmur`;
-  const progress = scrub ?? (duration > 0 ? Math.min(1, status.currentTime / duration) : 0);
+  const progress = scrub ?? pending ?? (duration > 0 ? Math.min(1, status.currentTime / duration) : 0);
 
   useEffect(() => {
     // Keeps playing (with lock screen controls and the Live Activity) after leaving the app.
@@ -79,15 +80,13 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
     player.setPlaybackRate(rate, "high");
   }, [player, rate]);
 
-  // Older memos have no stored waveform: learn it from the audio as it plays.
+  // Older memos have no stored waveform: learn it silently while playing and save it
+  // after a full listen. It is not drawn live — a filling-in waveform reads as a
+  // second progress bar.
   useAudioSampleListener(player, (sample) => {
     if (entry.waveform || !duration || !sample.channels[0]) return;
     const i = Math.min(BINS - 1, Math.floor((sample.timestamp / duration) * BINS));
     bins.current[i] = Math.max(bins.current[i] ?? 0, loudness(sample.channels[0].frames));
-    if (Date.now() - lastPush.current > 400) {
-      lastPush.current = Date.now();
-      setLearned([...bins.current]);
-    }
   });
 
   useEffect(() => {
@@ -99,16 +98,10 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
     }
   }, [status.didJustFinish, entry.id, entry.waveform]);
 
-  const base = useMemo(() => entry.waveform ?? placeholder(entry.id), [entry.waveform, entry.id]);
+  // Fixed for the life of the player, so saving a learned waveform doesn't reshape it mid-listen.
+  const [base] = useState(() => entry.waveform ?? placeholder(entry.id));
   const count = width > 0 ? Math.floor((width + GAP) / (BAR + GAP)) : 0;
-  const bars = useMemo(() => {
-    if (!count) return [];
-    if (entry.waveform || !learned) return resample(base, count);
-    // Real values where we've heard the audio, the placeholder elsewhere.
-    const merged = base.map((v, i) => learned[i] ?? v);
-    return resample(merged, count);
-  }, [base, learned, count, entry.waveform]);
-  const known = useMemo(() => (entry.waveform ? null : resample(base.map((_, i) => (learned?.[i] !== undefined ? 1 : 0)), count)), [base, learned, count, entry.waveform]);
+  const bars = useMemo(() => (count ? resample(base, count) : []), [base, count]);
 
   const live = (playing: boolean, positionSec: number, r = rate) => {
     void livePlayback({ title, subtitle, positionSec, durationSec: duration, playing, rate: r });
@@ -138,7 +131,14 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
 
   const seekTo = (p: number) => {
     const t = p * duration;
-    void player.seekTo(t);
+    setPending(p);
+    const n = ++seekSeq.current;
+    // Hold the target until the seek lands and the next status tick (200 ms) reports it;
+    // a newer seek owns `pending` from then on.
+    player
+      .seekTo(t)
+      .catch(() => {})
+      .finally(() => setTimeout(() => n === seekSeq.current && setPending(null), 350));
     track("playback_seek", { pct: Math.round(p * 100) });
     if (status.playing || status.currentTime > 0) live(status.playing, t);
   };
@@ -181,7 +181,8 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
   const scrubGesture = useExclusiveGestures(pan, tapSeek);
 
   const playedBars = Math.round(progress * bars.length);
-  const timeLeft = clock((scrub !== null ? scrub * duration : status.currentTime) * 1000);
+  const shown = scrub ?? pending;
+  const timeLeft = clock((shown !== null ? shown * duration : status.currentTime) * 1000);
 
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -205,7 +206,7 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
                   height: 3 + v * (HEIGHT - 3),
                   borderRadius: BAR / 2,
                   backgroundColor: colors.primary,
-                  opacity: i < playedBars ? 1 : known && !known[i] ? 0.16 : 0.3,
+                  opacity: i < playedBars ? 1 : 0.3,
                 }}
               />
             ))}
