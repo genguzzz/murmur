@@ -16,6 +16,7 @@ import {
 import { Bubble, PillButton } from "@/components/ui";
 import { logger } from "@/lib/log";
 import { track } from "@/lib/track";
+import { endLiveRecording, liveRecording } from "@/lib/device";
 import { RECORD_OPENERS } from "@/lib/prompts";
 import { audioFile, createVoiceEntry, newId } from "@/lib/store";
 import { clock } from "@/lib/format";
@@ -65,6 +66,7 @@ export default function Record() {
         if (cancelled) return;
         recorder.record();
         setPhase("recording");
+        void liveRecording({ elapsedSec: 0, paused: false, prompt: params.prompt, todo: todoMode });
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         log.info("recording started", { prompt: params.prompt ?? null, uri: recorder.uri });
       } catch (e) {
@@ -78,6 +80,7 @@ export default function Record() {
       // Leaving without saving (swipe, crash path): stop so the mic is released.
       if (!done.current) {
         recorder.stop().catch(() => {});
+        void endLiveRecording(false);
         void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
       }
     };
@@ -91,11 +94,13 @@ export default function Record() {
   const togglePause = () => {
     if (phase === "recording") {
       recorder.pause();
+      void liveRecording({ elapsedSec: state.durationMillis / 1000, paused: true, prompt: params.prompt, todo: todoMode });
       setPhase("paused");
       log.info("paused", { ms: state.durationMillis });
     } else if (phase === "paused") {
       recorder.record();
       setPhase("recording");
+      void liveRecording({ elapsedSec: state.durationMillis / 1000, paused: false, prompt: params.prompt, todo: todoMode });
       log.info("resumed", { ms: state.durationMillis });
     }
     void Haptics.selectionAsync();
@@ -131,6 +136,7 @@ export default function Record() {
       }
       createVoiceEntry({ id, audioFile: stored, durationSec, prompt: params.prompt, followUpOf: params.followUpOf, ...(todoMode ? { mode: "todo" as const } : {}) });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void endLiveRecording(true);
       router.replace({ pathname: "/processing", params: { id } });
     } catch (e) {
       log.error("save failed", e);
@@ -150,6 +156,7 @@ export default function Record() {
       }
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
       log.info("recording cancelled", { ms: state.durationMillis });
+      void endLiveRecording(false);
       track("record_cancelled", { sec: Math.round(state.durationMillis / 1000), mode: todoMode ? "todo" : "note" });
       router.back();
     };

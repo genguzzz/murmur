@@ -29,6 +29,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - Copy picked/taken files into app storage with `keepMedia` (sync copy) before relying on them.
 - Headless code (geofence/background tasks) reads `kv` (SQLite), not the journal store; tasks are defined at module load in `lib/device/*`.
 - Settings → 调试 → 能力自检 exercises every wrapper on the device.
+- Live Activity (Dynamic Island) while recording/playing: SwiftUI layout in `app/targets/live` (widget extension via `@bacons/apple-targets`), bridge in `app/modules/murmur-live`, JS in `lib/device/live.ts`. State goes through ActivityKit only — no App Group, no entitlements, so 全能签 re-signing keeps working (that's why not `expo-widgets`, which stores layouts in an App Group). `MurmurActivityAttributes.swift` exists in both places and must stay identical. Layout changes need an IPA; text/state changes don't.
 
 ## Usage events (埋点)
 

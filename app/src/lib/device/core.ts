@@ -58,6 +58,7 @@ const MODULES = {
   audio: "ExpoAudio",
   haptics: "ExpoHaptics",
   systemUI: "ExpoSystemUI",
+  live: "MurmurLive",
 } as const;
 
 export type Capability = keyof typeof MODULES;

@@ -10,7 +10,8 @@ const build = process.env.BUILD_NUMBER ?? "0";
 // whenever native code changes (new/upgraded native module, plugin, permission,
 // Expo SDK upgrade), then cut a new IPA with scripts/release.sh.
 // 4: capability pack (camera, photos, location, calendar, contacts, speech, background
-//    task, sqlite, reanimated/gesture-handler, …) so new features can ship over the air.
+//    task, sqlite, reanimated/gesture-handler, …) so new features can ship over the air,
+//    plus the Live Activity extension (targets/live) and its bridge (modules/murmur-live).
 // 3: expo-blur, datetimepicker. 2: expo-notifications, automatic light/dark.
 export const RUNTIME_VERSION = "4";
 
@@ -36,6 +37,7 @@ const config: ExpoConfig = {
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       CFBundleDisplayName: "Murmur",
+      NSSupportsLiveActivities: true,
     },
   },
   android: {
@@ -93,6 +95,8 @@ const config: ExpoConfig = {
     "expo-background-task",
     "expo-sqlite",
     "expo-web-browser",
+    // Widget extension for the Live Activity; no entitlements (see targets/live).
+    "@bacons/apple-targets",
   ],
   experiments: { typedRoutes: true },
 };

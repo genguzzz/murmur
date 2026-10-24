@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { endLivePlayback, livePlayback } from "@/lib/device";
 import { BottomBar } from "@/components/BottomBar";
 import { EntryArt } from "@/components/EntryArt";
 import { Mascot } from "@/components/Mascot";
@@ -13,7 +14,7 @@ import { MoodStamp } from "@/components/MoodStamp";
 import { Card, Chip, EmptyState, IconButton, PillButton, Screen, SectionTitle, Sheet, SmallButton, SpeechBubble, TopBar, styles as ui, tap, toast } from "@/components/ui";
 import { logger } from "@/lib/log";
 import { audioFile, deleteEntry, processEntry, reanalyze, setKeepOnHome, setReturnAt, useStore, type Entry } from "@/lib/store";
-import { clock, dayKey, fullDate } from "@/lib/format";
+import { clock, dayKey, fullDate, shortDate } from "@/lib/format";
 import { colors, fonts, MOOD_LABELS } from "@/lib/theme";
 
 const log = logger("entry");
@@ -248,19 +249,35 @@ function InlinePlayer({ entry }: { entry: Entry }) {
   const player = useAudioPlayer(uri);
   const status = useAudioPlayerStatus(player);
 
+  const duration = status.duration || entry.durationSec || 0;
+  const title = entry.title || "语音记录";
+  const subtitle = `${shortDate(entry.createdAt)} · Murmur`;
+
   useEffect(() => {
-    void setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+    // Keeps playing (with lock screen controls and the Live Activity) after leaving the app.
+    void setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, shouldPlayInBackground: true, interruptionMode: "doNotMix" });
+    return () => {
+      void endLivePlayback();
+    };
   }, []);
+
+  useEffect(() => {
+    if (status.didJustFinish) void endLivePlayback();
+  }, [status.didJustFinish]);
 
   const toggle = () => {
     tap();
-    if (status.playing) player.pause();
-    else {
-      if (status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration - 0.1)) void player.seekTo(0);
+    if (status.playing) {
+      player.pause();
+      void livePlayback({ title, subtitle, positionSec: status.currentTime, durationSec: duration, playing: false });
+    } else {
+      const restart = status.didJustFinish || (status.duration > 0 && status.currentTime >= status.duration - 0.1);
+      if (restart) void player.seekTo(0);
+      player.setActiveForLockScreen(true, { title, artist: "Murmur" });
       player.play();
+      void livePlayback({ title, subtitle, positionSec: restart ? 0 : status.currentTime, durationSec: duration, playing: true });
     }
   };
-  const duration = status.duration || entry.durationSec || 0;
   return (
     <Pressable onPress={toggle} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
       <Text style={[ui.faint, { fontVariant: ["tabular-nums"] }]}>

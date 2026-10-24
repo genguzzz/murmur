@@ -17,7 +17,7 @@ import { getState, loadState, resumePending, resyncTodoReminders, useLoaded, use
 import { applyScheme, colors, type Scheme } from "@/lib/theme";
 import { logRunningUpdate, startForegroundChecks } from "@/lib/updates";
 import { installNotificationHandler, onNotificationTap, syncCheckins } from "@/lib/notify";
-import { capabilities, installQuickActions, registerBackgroundRefresh } from "@/lib/device";
+import { capabilities, clearStaleLiveActivities, installQuickActions, registerBackgroundRefresh } from "@/lib/device";
 import { installTracking, track } from "@/lib/track";
 
 const log = logger("app");
@@ -35,6 +35,7 @@ if (Platform.OS !== "web") {
   const missing = Object.entries(caps).filter(([, v]) => !v).map(([k]) => k);
   log.info("capabilities", { total: Object.keys(caps).length, missing });
 }
+clearStaleLiveActivities();
 logRunningUpdate();
 startForegroundChecks();
 installNotificationHandler();

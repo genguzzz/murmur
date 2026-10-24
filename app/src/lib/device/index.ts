@@ -1,6 +1,6 @@
 // Device capabilities, wrapped. Feature code imports from here, never from the expo-*
 // modules directly, so permissions, logging and events behave the same everywhere.
-// Native modules for all of these ship in runtime 4; new ones need a runtime bump.
+// Native modules for all of these ship in runtime 4 (Live Activity in 5); new ones need a runtime bump.
 export { capabilities, has, DeviceError, type Capability } from "./core";
 export { ensureAccess, needAccess } from "./access";
 export { accessOf, ALL_PERMISSIONS, type Access, type PermissionKind } from "./permissions";
@@ -13,4 +13,5 @@ export { liveTranscribe, speak, stopSpeaking, type LiveTranscription } from "./s
 export { isOnline, keepAwake, locale, onNetworkChange, openInApp, releaseAwake } from "./system";
 export { backgroundStatus, registerBackgroundRefresh } from "./background";
 export { installQuickActions } from "./quickActions";
+export { clearStaleLiveActivities, endLivePlayback, endLiveRecording, livePlayback, liveRecording, liveSupported } from "./live";
 export { kv, openDatabaseSync } from "./kv";

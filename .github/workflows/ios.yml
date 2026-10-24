@@ -97,6 +97,8 @@ jobs:
           echo "MIN_IOS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$PL")" >> "$GITHUB_ENV"
           PLIST_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PL")
           test "$PLIST_VERSION" = "$VERSION" || { echo "::error::Info.plist version $PLIST_VERSION != $VERSION"; exit 1; }
+          # Embedded extensions (Live Activity widget) and their versions, for the log.
+          for X in "$APP"/PlugIns/*.appex; do [ -d "$X" ] && echo "extension: $(basename "$X") $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$X/Info.plist") $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$X/Info.plist")"; done
           IPA="$RUNNER_TEMP/Murmur-$VERSION.ipa"
           (cd "$RUNNER_TEMP/ipa" && zip -qry "$IPA" Payload)
           echo "IPA=$IPA" >> "$GITHUB_ENV"
