@@ -6,6 +6,7 @@ import { Directory, File, Paths } from "expo-file-system";
 import * as api from "./api";
 import { logger } from "./log";
 import { countWords, dayKey } from "./format";
+import { scheduleRemember, type CheckinPrefs } from "./notify";
 
 const log = logger("store");
 
@@ -64,6 +65,9 @@ export interface Settings {
   lockBiometrics: boolean;
   lockDelaySec: number;
   theme: "system" | "light" | "dark";
+  look: "original" | "glasses" | "beret";
+  checkins: CheckinPrefs;
+  memberSince?: string;
 }
 
 export interface InsightsCache {
@@ -82,7 +86,13 @@ interface State {
 const DEFAULT_STATE: State = {
   entries: [],
   chats: [],
-  settings: { server: api.DEFAULT_SERVER, token: "", language: "auto", name: "", lockEnabled: false, lockBiometrics: false, lockDelaySec: 60, theme: "system" },
+  settings: { server: api.DEFAULT_SERVER, token: "", language: "auto", name: "", lockEnabled: false,
+    lockBiometrics: false,
+    lockDelaySec: 60,
+    theme: "system",
+    look: "original",
+    checkins: { morning: { enabled: false, time: "08:30" }, evening: { enabled: false, time: "21:30" }, remember: false },
+  },
 };
 
 let state: State = DEFAULT_STATE;
@@ -129,6 +139,11 @@ export async function loadState(beforeReady?: () => void): Promise<void> {
     log.info("state loaded", { entries: state.entries.length, chats: state.chats.length, hasToken: !!state.settings.token });
   } catch (e) {
     log.error("state load failed", e);
+  }
+  if (!state.settings.memberSince) {
+    const first = state.entries.reduce<string | undefined>((m, e) => (!m || e.createdAt < m ? e.createdAt : m), undefined);
+    state = { ...state, settings: { ...state.settings, memberSince: first ?? new Date().toISOString() } };
+    scheduleSave();
   }
   api.configureApi(state.settings);
   beforeReady?.();
@@ -338,6 +353,7 @@ export async function processEntry(id: string): Promise<void> {
       words: countWords(a.cleaned_text || e.rawText || ""),
     });
     log.info("entry processed", { id, ms: Date.now() - t0, mood: a.mood });
+    void scheduleRemember(state.settings.checkins, { id, title: a.title, followUp: a.follow_up });
   } catch (err) {
     log.error("entry processing failed", { id, ms: Date.now() - t0, err });
     patchEntry(id, { status: "failed", error: api.describeError(err) });

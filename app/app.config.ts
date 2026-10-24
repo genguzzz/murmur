@@ -9,7 +9,7 @@ const build = process.env.BUILD_NUMBER ?? "0";
 // OTA updates only reach binaries with the same runtime version. Bump this
 // whenever native code changes (new/upgraded native module, plugin, permission,
 // Expo SDK upgrade), then cut a new IPA with scripts/release.sh.
-export const RUNTIME_VERSION = "1";
+export const RUNTIME_VERSION = "2"; // 2: expo-notifications, automatic light/dark
 
 const config: ExpoConfig = {
   name: "Murmur",
@@ -24,7 +24,7 @@ const config: ExpoConfig = {
   },
   orientation: "portrait",
   icon: "./assets/icon.png",
-  userInterfaceStyle: "light",
+  userInterfaceStyle: "automatic",
   backgroundColor: "#F6EEE3",
   ios: {
     bundleIdentifier: "top.gugenzzz.murmur",
@@ -49,6 +49,9 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-updates",
     "expo-secure-store",
+    // Local notifications only (check-ins, follow-up reminders): no APNs entitlement,
+    // so the IPA re-signs cleanly with any provisioning profile.
+    ["expo-notifications", { enableRemoteNotifications: false }],
     ["expo-local-authentication", { faceIDPermission: "Murmur 用面容 ID 解锁你的日记。" }],
     [
       "expo-audio",

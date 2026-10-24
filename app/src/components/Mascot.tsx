@@ -1,7 +1,11 @@
-import Svg, { Circle, Path, Rect } from "react-native-svg";
+import Svg, { Circle, Ellipse, Path, Rect } from "react-native-svg";
+import { useStore } from "@/lib/store";
 
 // The little notebook companion. `mood` changes the mouth.
-export function Mascot({ size = 44, mood = "smile", glasses }: { size?: number; mood?: "smile" | "talk" | "calm"; glasses?: boolean }) {
+export function Mascot({ size = 44, mood = "smile", glasses, look: lookProp }: { size?: number; mood?: "smile" | "talk" | "calm"; glasses?: boolean; look?: "original" | "glasses" | "beret" }) {
+  const stored = useStore((s) => s.settings.look);
+  const look = lookProp ?? stored ?? "original";
+  const showGlasses = glasses || look === "glasses";
   const mouth =
     mood === "talk"
       ? <Circle cx="50" cy="60" r="5" fill="#463022" />
@@ -20,7 +24,13 @@ export function Mascot({ size = 44, mood = "smile", glasses }: { size?: number; 
       <Circle cx="37" cy="55" r="4" fill="#E8968A" opacity={0.6} />
       <Circle cx="67" cy="55" r="4" fill="#E8968A" opacity={0.6} />
       {mouth}
-      {glasses ? (
+      {look === "beret" ? (
+        <>
+          <Ellipse cx="54" cy="16" rx="26" ry="9" fill="#B5534A" />
+          <Circle cx="56" cy="7" r="3.5" fill="#B5534A" />
+        </>
+      ) : null}
+      {showGlasses ? (
         <>
           <Circle cx="43" cy="46" r="8" fill="none" stroke="#463022" strokeWidth="2.6" />
           <Circle cx="61" cy="46" r="8" fill="none" stroke="#463022" strokeWidth="2.6" />

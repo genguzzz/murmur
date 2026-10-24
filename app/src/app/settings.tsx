@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -6,41 +6,35 @@ import * as Device from "expo-device";
 import * as Sharing from "expo-sharing";
 import { useRouter } from "expo-router";
 import { File, Paths } from "expo-file-system";
-import { Card, PillButton, SectionTitle, TopBar, styles as ui, tap } from "@/components/ui";
+import * as Updates from "expo-updates";
+import { Mascot } from "@/components/Mascot";
+import { Card, PillButton, Screen, Sheet, TopBar, styles as ui, tap, toast } from "@/components/ui";
 import { appVersion, describeError, ping, uploadLogs } from "@/lib/api";
 import { authenticateBiometric, biometricKind, disableLock } from "@/lib/lock";
 import { collectLogs, logger, recentLines, sessionId } from "@/lib/log";
+import { cancelRemember, ensurePermission, syncCheckins, type CheckinPrefs } from "@/lib/notify";
 import { debugSummary, exportJson, updateSettings, useStore, wipeAll } from "@/lib/store";
-import * as Updates from "expo-updates";
 import { checkAndFetch, restartToApply, runningLabel, updatesEnabled } from "@/lib/updates";
+import { dayKey } from "@/lib/format";
 import { colors, radius } from "@/lib/theme";
 
 const log = logger("settings");
 
+const THEMES = [
+  ["system", "跟随系统", "白天浅色，夜里自动变深", "phone-portrait-outline"],
+  ["light", "浅色", "明亮的日间主题", "sunny-outline"],
+  ["dark", "深色", "适合夜晚，不刺眼", "moon-outline"],
+] as const;
+const LOOKS = [["original", "原版"], ["glasses", "戴眼镜"], ["beret", "贝雷帽"]] as const;
+const MORNING_TIMES = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"];
+const EVENING_TIMES = ["20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00"];
+
 export default function Settings() {
   const settings = useStore((s) => s.settings);
+  const entries = useStore((s) => s.entries);
   const router = useRouter();
   const [bioKind, setBioKind] = useState<"faceid" | "touchid" | null>(null);
-  useEffect(() => {
-    void biometricKind().then(setBioKind);
-  }, []);
-  const bioName = bioKind === "touchid" ? "Touch ID" : "Face ID";
-
-  const toggleLock = (on: boolean) => {
-    if (on) router.push("/pin");
-    else
-      Alert.alert("关闭密码锁？", "打开 App 将不再需要密码。", [
-        { text: "取消", style: "cancel" },
-        { text: "关闭", style: "destructive", onPress: () => void disableLock() },
-      ]);
-  };
-
-  const toggleBio = async (on: boolean) => {
-    if (!on) return updateSettings({ lockBiometrics: false });
-    // Confirm it actually works (and trigger the iOS permission prompt) before relying on it.
-    if (await authenticateBiometric()) updateSettings({ lockBiometrics: true });
-    else Alert.alert(`${bioName} 未通过`, "没有开启。");
-  };
+  const [sheet, setSheet] = useState<null | "theme" | "look" | "morning" | "evening" | "remember">(null);
   const [server, setServer] = useState(settings.server);
   const [token, setToken] = useState(settings.token);
   const [name, setName] = useState(settings.name);
@@ -51,20 +45,47 @@ export default function Settings() {
   const [showLog, setShowLog] = useState(false);
   const [checking, setChecking] = useState(false);
 
-  const checkUpdate = async () => {
-    setChecking(true);
-    const ready = await checkAndFetch("manual");
-    setChecking(false);
-    if (ready)
-      Alert.alert("新版本已下载", "重启后生效。", [
-        { text: "稍后", style: "cancel" },
-        { text: "立即重启", onPress: () => void restartToApply() },
+  useEffect(() => {
+    void biometricKind().then(setBioKind);
+  }, []);
+  const bioName = bioKind === "touchid" ? "Touch ID" : "Face ID";
+
+  const stats = useMemo(() => {
+    const voiceSec = entries.reduce((n, e) => n + (e.kind === "voice" ? e.durationSec ?? 0 : 0), 0);
+    return { count: entries.length, minutes: Math.round(voiceSec / 60), days: new Set(entries.map((e) => dayKey(e.createdAt))).size };
+  }, [entries]);
+  const since = settings.memberSince ? new Date(settings.memberSince) : new Date();
+
+  // ---------- notifications ----------
+  const setCheckins = async (next: CheckinPrefs, needsPermission: boolean) => {
+    if (needsPermission && !(await ensurePermission())) {
+      Alert.alert("需要通知权限", "请在系统设置里允许 Murmur 发送通知。");
+      return;
+    }
+    updateSettings({ checkins: next });
+    await syncCheckins(next);
+    if (!next.remember) void cancelRemember();
+  };
+  const ck = settings.checkins;
+
+  // ---------- lock ----------
+  const toggleLock = (on: boolean) => {
+    if (on) router.push("/pin");
+    else
+      Alert.alert("关闭密码锁？", "打开 App 将不再需要密码。", [
+        { text: "取消", style: "cancel" },
+        { text: "关闭", style: "destructive", onPress: () => void disableLock() },
       ]);
-    else Alert.alert("已是最新", `当前运行：${runningLabel()}`);
+  };
+  const toggleBio = async (on: boolean) => {
+    if (!on) return updateSettings({ lockBiometrics: false });
+    // Confirm it actually works (and trigger the iOS permission prompt) before relying on it.
+    if (await authenticateBiometric()) updateSettings({ lockBiometrics: true });
+    else Alert.alert(`${bioName} 未通过`, "没有开启。");
   };
 
+  // ---------- server / debug / data ----------
   const dirty = server !== settings.server || token !== settings.token || name !== settings.name;
-
   const saveAndTest = async () => {
     updateSettings({ server: server.trim(), token: token.trim(), name: name.trim() });
     setTesting(true);
@@ -76,6 +97,18 @@ export default function Settings() {
     } finally {
       setTesting(false);
     }
+  };
+
+  const checkUpdate = async () => {
+    setChecking(true);
+    const ready = await checkAndFetch("manual");
+    setChecking(false);
+    if (ready)
+      Alert.alert("新版本已下载", "重启后生效。", [
+        { text: "稍后", style: "cancel" },
+        { text: "立即重启", onPress: () => void restartToApply() },
+      ]);
+    else Alert.alert("已是最新", `当前运行：${runningLabel()}`);
   };
 
   const upload = async () => {
@@ -107,7 +140,7 @@ export default function Settings() {
       const json = exportJson();
       if (Platform.OS === "web") {
         await Clipboard.setStringAsync(json);
-        Alert.alert("已复制到剪贴板");
+        toast("已复制到剪贴板");
         return;
       }
       const f = new File(Paths.cache, `murmur-export-${new Date().toISOString().slice(0, 10)}.json`);
@@ -128,123 +161,246 @@ export default function Settings() {
       { text: "清空", style: "destructive", onPress: wipeAll },
     ]);
 
+  const theme = THEMES.find((t) => t[0] === settings.theme) ?? THEMES[0];
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <Screen>
       <TopBar title="设置" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
-        <Card muted style={{ flexDirection: "row", gap: 8 }}>
-          <Ionicons name="shield-checkmark-outline" size={16} color={colors.textSoft} />
-          <Text style={[ui.faint, { flex: 1, lineHeight: 18 }]}>录音和记录只保存在这台手机上。发去转写和整理时，服务器处理完就丢弃，不留存。</Text>
-        </Card>
+        <Section icon="compass" title="你的日记">
+          <Row icon="document-text-outline" label="总记录" value={`${stats.count} 条`} />
+          <Row icon="mic-outline" label="录音时长" value={`${stats.minutes} 分钟`} />
+          <Row icon="calendar-outline" label="记录天数" value={`${stats.days} 天`} />
+          <Row icon="calendar-number-outline" label="开始使用" value={`${since.getFullYear()}年${since.getMonth() + 1}月${since.getDate()}日`} />
+        </Section>
 
-        <SectionTitle icon="person-outline" title="称呼" />
-        <Field value={name} onChange={setName} placeholder="首页问候用的名字（可空）" />
+        <Section icon="notifications" title="通知">
+          <ToggleRow
+            icon="sunny-outline"
+            title="早间签到"
+            subtitle={ck.morning.enabled ? `每天 ${ck.morning.time} · 给今天定个方向` : "给今天定个方向"}
+            value={ck.morning.enabled}
+            onChange={(v) => void setCheckins({ ...ck, morning: { ...ck.morning, enabled: v } }, v)}
+            onPress={ck.morning.enabled ? () => setSheet("morning") : undefined}
+          />
+          <ToggleRow
+            icon="moon-outline"
+            title="晚间签到"
+            subtitle={ck.evening.enabled ? `每天 ${ck.evening.time} · 回顾今天，放松一下` : "回顾今天，放松一下"}
+            value={ck.evening.enabled}
+            onChange={(v) => void setCheckins({ ...ck, evening: { ...ck.evening, enabled: v } }, v)}
+            onPress={ck.evening.enabled ? () => setSheet("evening") : undefined}
+          />
+          <Card onPress={() => setSheet("remember")} style={{ flexDirection: "row", alignItems: "center", gap: 14, marginTop: 6 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="sparkles" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[ui.title, { fontSize: 16 }]}>记得你说过的话</Text>
+              <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>{ck.remember ? "已开启 · " : ""}根据你真正说过的内容，第二天提醒你接着想。</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+          </Card>
+        </Section>
 
-        <SectionTitle icon="contrast-outline" title="外观" />
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {([["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]] as const).map(([v, label]) => (
-            <Pressable key={v} onPress={() => { tap(); updateSettings({ theme: v }); }} style={{ flex: 1, height: 40, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: settings.theme === v ? colors.primary : colors.card, borderWidth: 1, borderColor: settings.theme === v ? colors.primary : colors.border }}>
-              <Text style={{ color: settings.theme === v ? colors.onPrimary : colors.text }}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <Section icon="moon" title="外观">
+          <NavRow icon={theme[3]} title="主题" subtitle={`${theme[1]} · ${theme[2]}`} onPress={() => setSheet("theme")} />
+          <NavRow iconNode={<Mascot size={34} />} title="吉祥物造型" subtitle={LOOKS.find((l) => l[0] === settings.look)?.[1] ?? "原版"} onPress={() => setSheet("look")} />
+        </Section>
 
-        <SectionTitle icon="lock-closed-outline" title="隐私锁" />
-        <Card style={{ gap: 14 }}>
-          <ToggleRow title="密码锁" subtitle="打开 App 时需要 4 位密码" value={settings.lockEnabled} onChange={toggleLock} />
+        <Section icon="shield-checkmark" title="安全">
+          <ToggleRow icon="lock-closed-outline" title="密码锁" subtitle="打开 App 时需要 4 位密码" value={settings.lockEnabled} onChange={toggleLock} />
           {settings.lockEnabled ? (
             <>
-              {bioKind ? <ToggleRow title={`使用 ${bioName}`} subtitle="解锁时优先用生物识别" value={settings.lockBiometrics} onChange={(v) => void toggleBio(v)} /> : null}
-              <View>
+              {bioKind ? <ToggleRow icon="scan-outline" title={`使用 ${bioName}`} subtitle="解锁时优先用生物识别" value={settings.lockBiometrics} onChange={(v) => void toggleBio(v)} /> : null}
+              <View style={{ paddingVertical: 10, paddingLeft: 42 }}>
                 <Text style={[ui.title, { fontSize: 15 }]}>离开后多久上锁</Text>
                 <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
                   {([[0, "立即"], [60, "1 分钟"], [300, "5 分钟"]] as const).map(([v, label]) => (
-                    <Pressable key={v} onPress={() => updateSettings({ lockDelaySec: v })} style={{ flex: 1, height: 36, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: settings.lockDelaySec === v ? colors.primary : colors.bg, borderWidth: 1, borderColor: settings.lockDelaySec === v ? colors.primary : colors.border }}>
-                      <Text style={{ color: settings.lockDelaySec === v ? colors.onPrimary : colors.text, fontSize: 13 }}>{label}</Text>
-                    </Pressable>
+                    <Segment key={v} label={label} active={settings.lockDelaySec === v} onPress={() => updateSettings({ lockDelaySec: v })} />
                   ))}
                 </View>
               </View>
-              <Pressable onPress={() => router.push("/pin")}>
-                <Text style={{ color: colors.primaryDark, fontWeight: "600" }}>修改密码</Text>
-              </Pressable>
+              <NavRow icon="keypad-outline" title="修改密码" onPress={() => router.push("/pin")} />
             </>
           ) : null}
-        </Card>
+        </Section>
 
-        <SectionTitle icon="server-outline" title="服务器" />
-        <View style={{ gap: 10 }}>
-          <Field value={server} onChange={setServer} placeholder="https://voice.gugenzzz.top" />
-          <Field value={token} onChange={setToken} placeholder="访问令牌" secure />
-          <PillButton label={dirty ? "保存并测试连接" : "测试连接"} icon="pulse" onPress={() => void saveAndTest()} loading={testing} />
-        </View>
+        <Section icon="person" title="称呼">
+          <Field value={name} onChange={setName} placeholder="首页问候用的名字（可空）" />
+          {name !== settings.name ? <PillButton label="保存" onPress={() => { updateSettings({ name: name.trim() }); toast("已保存"); }} style={{ marginTop: 10, height: 44 }} /> : null}
+        </Section>
 
-        <SectionTitle icon="language-outline" title="识别语言" />
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {([["auto", "自动"], ["zh", "中文"], ["en", "English"]] as const).map(([v, label]) => (
-            <Pressable key={v} onPress={() => updateSettings({ language: v })} style={{ flex: 1, height: 40, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: settings.language === v ? colors.primary : colors.card, borderWidth: 1, borderColor: settings.language === v ? colors.primary : colors.border }}>
-              <Text style={{ color: settings.language === v ? colors.onPrimary : colors.text }}>{label}</Text>
+        <Section icon="server" title="服务器">
+          <View style={{ gap: 10 }}>
+            <Field value={server} onChange={setServer} placeholder="https://voice.gugenzzz.top" />
+            <Field value={token} onChange={setToken} placeholder="访问令牌" secure />
+            <PillButton label={dirty ? "保存并测试连接" : "测试连接"} icon="pulse" onPress={() => void saveAndTest()} loading={testing} />
+          </View>
+          <Text style={[ui.title, { fontSize: 15, marginTop: 16 }]}>识别语言</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+            {([["auto", "自动"], ["zh", "中文"], ["en", "English"]] as const).map(([v, label]) => (
+              <Segment key={v} label={label} active={settings.language === v} onPress={() => updateSettings({ language: v })} />
+            ))}
+          </View>
+        </Section>
+
+        <Section icon="bug" title="调试">
+          <Card style={{ gap: 10 }}>
+            <Text style={ui.body}>遇到问题时，简单描述一下再上传日志。日志只含操作和错误信息，不含记录内容。</Text>
+            <Field value={note} onChange={setNote} placeholder="发生了什么？（可空）" />
+            <PillButton label="上传日志" icon="cloud-upload-outline" onPress={() => void upload()} loading={uploading} />
+            {lastLogId ? (
+              <Pressable onPress={() => void Clipboard.setStringAsync(lastLogId)}>
+                <Text style={[ui.faint, { textAlign: "center" }]}>上次上传：{lastLogId}（点击复制）</Text>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={() => setShowLog(!showLog)}>
+              <Text style={[ui.faint, { textAlign: "center", textDecorationLine: "underline" }]}>{showLog ? "收起最近日志" : "查看最近日志"}</Text>
             </Pressable>
-          ))}
-        </View>
+            {showLog ? (
+              <ScrollView style={{ maxHeight: 320, backgroundColor: "#2B211A", borderRadius: radius.sm, padding: 10 }} nestedScrollEnabled>
+                <Text selectable style={{ color: "#E9DCCB", fontSize: 10, fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }) }}>
+                  {recentLines(200).join("\n")}
+                </Text>
+              </ScrollView>
+            ) : null}
+          </Card>
+        </Section>
 
-        <SectionTitle icon="bug-outline" title="调试" />
-        <Card style={{ gap: 10 }}>
-          <Text style={ui.body}>遇到问题时，简单描述一下再上传日志。日志只含操作和错误信息，不含记录内容。</Text>
-          <Field value={note} onChange={setNote} placeholder="发生了什么？（可空）" />
-          <PillButton label="上传日志" icon="cloud-upload-outline" onPress={() => void upload()} loading={uploading} />
-          {lastLogId ? (
-            <Pressable onPress={() => void Clipboard.setStringAsync(lastLogId)}>
-              <Text style={[ui.faint, { textAlign: "center" }]}>上次上传：{lastLogId}（点击复制）</Text>
-            </Pressable>
-          ) : null}
-          <Pressable onPress={() => setShowLog(!showLog)}>
-            <Text style={[ui.faint, { textAlign: "center", textDecorationLine: "underline" }]}>{showLog ? "收起最近日志" : "查看最近日志"}</Text>
-          </Pressable>
-          {showLog ? (
-            <ScrollView style={{ maxHeight: 320, backgroundColor: "#2B211A", borderRadius: radius.sm, padding: 10 }} nestedScrollEnabled>
-              <Text selectable style={{ color: "#E9DCCB", fontSize: 10, fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }) }}>
-                {recentLines(200).join("\n")}
-              </Text>
-            </ScrollView>
-          ) : null}
-        </Card>
+        <Section icon="folder-open" title="数据与隐私">
+          <Text style={[ui.faint, { lineHeight: 18, marginBottom: 6 }]}>录音和记录只保存在这台手机上。发去转写和整理时，服务器处理完就丢弃，不留存。</Text>
+          <NavRow icon="download-outline" title="导出全部数据" subtitle="JSON 格式，包含记录和对话（不含录音）" onPress={() => void doExport()} />
+          <NavRow icon="trash-outline" title="清空所有数据" subtitle="删除记录、录音和对话" onPress={wipe} danger />
+        </Section>
 
-        <SectionTitle icon="folder-open-outline" title="数据" />
-        <View style={{ gap: 10 }}>
-          <Row icon="download-outline" title="导出全部数据" subtitle="JSON 格式，包含记录和对话（不含录音）" onPress={() => void doExport()} />
-          <Row icon="trash-outline" title="清空所有数据" subtitle="删除记录、录音和对话" onPress={wipe} danger />
-        </View>
-
-        <SectionTitle icon="information-circle-outline" title="版本" />
-        <Card style={{ gap: 6 }}>
+        <Section icon="information-circle" title="版本">
           <Text style={ui.body}>App {appVersion}</Text>
-          <Text style={ui.faint}>
+          <Text style={[ui.faint, { marginTop: 4 }]}>
             {updatesEnabled
               ? Updates.isEmbeddedLaunch
                 ? "运行的是安装包自带的代码"
                 : `运行热更新 ${Updates.updateId?.slice(0, 8)} · ${Updates.createdAt?.toLocaleString() ?? ""}`
               : "开发模式，热更新未启用"}
           </Text>
-          <Text style={ui.faint}>运行时版本 {Updates.runtimeVersion ?? "-"}</Text>
-          {updatesEnabled ? <PillButton label="检查更新" icon="cloud-download-outline" variant="ghost" onPress={() => void checkUpdate()} loading={checking} style={{ marginTop: 6, height: 44 }} /> : null}
-        </Card>
-
-        <Text style={[ui.faint, { textAlign: "center", marginTop: 30 }]}>session {sessionId}</Text>
+          <Text style={[ui.faint, { marginTop: 2 }]}>运行时版本 {Updates.runtimeVersion ?? "-"} · session {sessionId}</Text>
+          {updatesEnabled ? <PillButton label="检查更新" icon="cloud-download-outline" variant="ghost" onPress={() => void checkUpdate()} loading={checking} style={{ marginTop: 12, height: 44 }} /> : null}
+        </Section>
       </ScrollView>
+
+      <Sheet visible={sheet === "theme"} onClose={() => setSheet(null)} icon={<Ionicons name="contrast" size={26} color={colors.primary} />} title="主题" button="完成">
+        <View style={{ gap: 10, marginTop: 18 }}>
+          {THEMES.map(([v, label, desc, icon]) => (
+            <Choice key={v} icon={icon} title={label} subtitle={desc} active={settings.theme === v} onPress={() => updateSettings({ theme: v })} />
+          ))}
+        </View>
+      </Sheet>
+
+      <Sheet visible={sheet === "look"} onClose={() => setSheet(null)} title="吉祥物造型" button="完成">
+        <View style={{ flexDirection: "row", justifyContent: "space-around", marginTop: 22 }}>
+          {LOOKS.map(([v, label]) => (
+            <Pressable key={v} onPress={() => { tap(); updateSettings({ look: v }); }} style={{ alignItems: "center", gap: 8, padding: 10, borderRadius: 18, borderWidth: 2, borderColor: settings.look === v ? colors.primary : "transparent" }}>
+              <Mascot size={72} look={v} />
+              <Text style={{ color: colors.text, fontWeight: settings.look === v ? "700" : "400" }}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Sheet>
+
+      {(["morning", "evening"] as const).map((which) => (
+        <Sheet key={which} visible={sheet === which} onClose={() => setSheet(null)} icon={<Ionicons name={which === "morning" ? "sunny" : "moon"} size={26} color={colors.primary} />} title={which === "morning" ? "早间签到时间" : "晚间签到时间"} button="完成">
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 18, justifyContent: "center" }}>
+            {(which === "morning" ? MORNING_TIMES : EVENING_TIMES).map((t) => (
+              <Pressable key={t} onPress={() => { tap(); void setCheckins({ ...ck, [which]: { ...ck[which], time: t } }, false); }} style={{ width: 92, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: ck[which].time === t ? colors.primary : colors.cardMuted, borderWidth: 1, borderColor: ck[which].time === t ? colors.primary : colors.border }}>
+                <Text style={{ fontSize: 16, color: ck[which].time === t ? colors.onPrimary : colors.text }}>{t}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Sheet>
+      ))}
+
+      <Sheet visible={sheet === "remember"} onClose={() => setSheet(null)} icon={<Ionicons name="sparkles" size={26} color={colors.primary} />} title="记得你说过的话" body={`每条记录整理完后，Murmur 会在第二天 ${ck.evening.time}（晚间签到的时间）用这条记录的追问提醒你，点开就能接着说。`} button={null}>
+        <PillButton
+          label={ck.remember ? "关闭提醒" : "开启提醒"}
+          variant={ck.remember ? "ghost" : "primary"}
+          onPress={() => { void setCheckins({ ...ck, remember: !ck.remember }, !ck.remember); setSheet(null); toast(ck.remember ? "已关闭提醒" : "已开启提醒"); }}
+          style={{ marginTop: 20 }}
+        />
+      </Sheet>
+    </Screen>
+  );
+}
+
+function Section({ icon, title, children }: { icon: keyof typeof Ionicons.glyphMap; title: string; children: ReactNode }) {
+  return (
+    <View style={{ marginTop: 26 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 }}>
+        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name={icon} size={15} color={colors.primary} />
+        </View>
+        <Text style={{ fontSize: 14, fontWeight: "700", letterSpacing: 2, color: colors.text }}>{title}</Text>
+      </View>
+      {children}
     </View>
   );
 }
 
-function ToggleRow({ title, subtitle, value, onChange }: { title: string; subtitle: string; value: boolean; onChange: (v: boolean) => void }) {
+function Row({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-      <View style={{ flex: 1 }}>
-        <Text style={[ui.title, { fontSize: 15 }]}>{title}</Text>
-        <Text style={[ui.faint, { marginTop: 2 }]}>{subtitle}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 11 }}>
+      <Ionicons name={icon} size={24} color={colors.text} style={{ width: 26 }} />
+      <View>
+        <Text style={{ color: colors.textSoft, fontSize: 14 }}>{label}</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: "600", marginTop: 2 }}>{value}</Text>
       </View>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.primary, false: colors.border }} />
     </View>
+  );
+}
+
+function ToggleRow({ icon, title, subtitle, value, onChange, onPress }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string; value: boolean; onChange: (v: boolean) => void; onPress?: () => void }) {
+  return (
+    <Pressable disabled={!onPress} onPress={() => { tap(); onPress?.(); }} style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 12 }}>
+      <Ionicons name={icon} size={24} color={colors.text} style={{ width: 26 }} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>{title}</Text>
+        <Text style={{ color: colors.textSoft, fontSize: 14, marginTop: 2 }}>{subtitle}</Text>
+      </View>
+      <Switch value={value} onValueChange={(v) => { tap(); onChange(v); }} trackColor={{ true: "#5E7F4F", false: colors.border }} />
+    </Pressable>
+  );
+}
+
+function NavRow({ icon, iconNode, title, subtitle, onPress, danger }: { icon?: keyof typeof Ionicons.glyphMap; iconNode?: ReactNode; title: string; subtitle?: string; onPress: () => void; danger?: boolean }) {
+  return (
+    <Pressable onPress={() => { tap(); onPress(); }} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 12, opacity: pressed ? 0.7 : 1 })}>
+      <View style={{ width: 26, alignItems: "center" }}>{iconNode ?? <Ionicons name={icon!} size={24} color={danger ? colors.danger : colors.text} />}</View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: danger ? colors.danger : colors.text, fontSize: 17, fontWeight: "600" }}>{title}</Text>
+        {subtitle ? <Text style={{ color: colors.textSoft, fontSize: 14, marginTop: 2 }}>{subtitle}</Text> : null}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+    </Pressable>
+  );
+}
+
+function Choice({ icon, title, subtitle, active, onPress }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={() => { tap(); onPress(); }} style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: 14, borderRadius: 14, backgroundColor: colors.cardMuted, borderWidth: 1.5, borderColor: active ? colors.primary : colors.border }}>
+      <Ionicons name={icon} size={22} color={colors.text} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontSize: 16, fontWeight: "600" }}>{title}</Text>
+        <Text style={{ color: colors.textSoft, fontSize: 13, marginTop: 2 }}>{subtitle}</Text>
+      </View>
+      {active ? <Ionicons name="checkmark-circle" size={22} color={colors.primary} /> : null}
+    </Pressable>
+  );
+}
+
+function Segment({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={() => { tap(); onPress(); }} style={{ flex: 1, height: 38, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: active ? colors.primary : colors.card, borderWidth: 1, borderColor: active ? colors.primary : colors.border }}>
+      <Text style={{ color: active ? colors.onPrimary : colors.text, fontSize: 14 }}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -260,18 +416,5 @@ function Field({ value, onChange, placeholder, secure }: { value: string; onChan
       autoCorrect={false}
       style={{ height: 46, backgroundColor: colors.card, borderRadius: radius.sm, paddingHorizontal: 14, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border }}
     />
-  );
-}
-
-function Row({ icon, title, subtitle, onPress, danger }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string; onPress: () => void; danger?: boolean }): ReactNode {
-  return (
-    <Card onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-      <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.textSoft} />
-      <View style={{ flex: 1 }}>
-        <Text style={[ui.title, { fontSize: 15, color: danger ? colors.danger : colors.text }]}>{title}</Text>
-        <Text style={[ui.faint, { marginTop: 2 }]}>{subtitle}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
-    </Card>
   );
 }

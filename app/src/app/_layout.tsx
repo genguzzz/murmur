@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, AppState, Platform, useColorScheme, View } from "react-native";
-import { Stack, usePathname } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Device from "expo-device";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -10,9 +10,10 @@ import { ToastHost } from "@/components/ui";
 import { startLockWatcher, useLocked } from "@/lib/lock";
 import { appVersion } from "@/lib/api";
 import { flush, installGlobalHandlers, logger, pruneLogs, sessionId } from "@/lib/log";
-import { loadState, resumePending, useLoaded, useStore } from "@/lib/store";
+import { getState, loadState, resumePending, useLoaded, useStore } from "@/lib/store";
 import { applyScheme, colors, type Scheme } from "@/lib/theme";
 import { logRunningUpdate, startForegroundChecks } from "@/lib/updates";
+import { installNotificationHandler, onNotificationTap, syncCheckins } from "@/lib/notify";
 
 const log = logger("app");
 installGlobalHandlers();
@@ -24,14 +25,17 @@ log.info("launch", {
 });
 logRunningUpdate();
 startForegroundChecks();
+installNotificationHandler();
 void loadState(startLockWatcher).then(() => {
   pruneLogs();
   resumePending();
+  void syncCheckins(getState().settings.checkins);
 });
 
 export default function RootLayout() {
   const loaded = useLoaded();
   const pathname = usePathname();
+  const router = useRouter();
   const locked = useLocked();
   const lockEnabled = useStore((s) => s.settings.lockEnabled);
   const themePref = useStore((s) => s.settings.theme);
@@ -49,6 +53,11 @@ export default function RootLayout() {
   useEffect(() => {
     log.info("route", { pathname });
   }, [pathname]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    return onNotificationTap((route, params) => router.push({ pathname: route as never, params }));
+  }, [loaded, router]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (s) => {
