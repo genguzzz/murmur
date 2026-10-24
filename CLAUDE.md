@@ -13,7 +13,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 
 ## App conventions
 
-- Navigation: four tabs in `src/app/(tabs)/` (首页 · 待办 · 记录 · 对话) under a floating frosted `GlassTabBar` with the record button in the middle (long-press = type). Everything else opens from the left drawer (`components/Drawer.tsx`) or is a stack screen with `TopBar`. New top-level features go in the drawer unless they're daily-use.
+- Navigation: four tabs in `src/app/(tabs)/` (首页 · 待办 · 记录 · 对话) under a floating frosted `GlassTabBar` with the record button in the middle (tap = record; hold, slide to 写一段 / 记待办, release). Everything else opens from the left drawer (`components/Drawer.tsx`) or is a stack screen with `TopBar`. New top-level features go in the drawer unless they're daily-use.
 - Tab screens start with `TabHeader` and pad the bottom by `TAB_BAR_SPACE`.
 - Theme: `colors` is a mutable palette swapped by `applyScheme`; read `colors.x` during render (or use `styles` getters / `shadow()`), never capture it at module scope or in `StyleSheet.create`.
 - UI copy is Simplified Chinese, short and warm; the mascot speaks in `SpeechBubble`s. Every tap gets haptics (`tap()`, `PillButton` does it); confirmations use `toast()` — pass an action for undo.
@@ -34,6 +34,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - expo-file-system `copy()`/`move()` are async; deleting the source right after lost recordings once. Use `moveSync`/`copySync` and check the size.
 - Self-signed builds have no push entitlement: notifications are local only (`enableRemoteNotifications: false`).
 - Face ID `lockout` comes back instantly until the device passcode is entered; `authenticateBiometric` retries with the passcode fallback.
+- After a successful Face ID scan iOS keeps the app `inactive` for ~2 s; anything keyed on AppState (the privacy cover) must ignore that window (`isAuthenticating()`).
 - Don't present an RN `Modal` while another is still dismissing (iOS drops it); wait ~450 ms.
 - Server-side Claude calls must go out through the residential proxy (`server/src/upstream.ts`, `LLM_PROXY`), with no direct fallback; Groq transcription goes direct. Check any new LLM call uses `upstreamFetch`.
 - No model identifiers in commit messages or PR text.
