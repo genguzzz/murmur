@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Platform, Pressable, Text, View, type LayoutChangeEvent } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "expo-router";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus, useAudioSampleListener } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { tap } from "./ui";
@@ -49,7 +50,7 @@ function loudness(frames: number[]): number {
 
 // Tap or drag anywhere on the waveform; the seek happens on release. Gesture state
 // lives in this closure because the responder is created once per player.
-function createScrubber(setScrub: (p: number | null) => void) {
+function createScrubber(setScrub: (p: number | null) => void, holdBack: (hold: boolean) => void) {
   let width = 1;
   let startX = 0;
   let bucket = -1;
@@ -60,6 +61,8 @@ function createScrubber(setScrub: (p: number | null) => void) {
     onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > Math.abs(g.dy),
     onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: (e) => {
+      // While scrubbing, the page's swipe-back must not fire on the same drag.
+      holdBack(true);
       startX = e.nativeEvent.locationX;
       bucket = -1;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -75,10 +78,14 @@ function createScrubber(setScrub: (p: number | null) => void) {
       setScrub(p);
     },
     onPanResponderRelease: (_, g) => {
+      holdBack(false);
       setScrub(null);
       seek(at(g.dx));
     },
-    onPanResponderTerminate: () => setScrub(null),
+    onPanResponderTerminate: () => {
+      holdBack(false);
+      setScrub(null);
+    },
   });
   return {
     handlers: pan.panHandlers,
@@ -175,7 +182,8 @@ export function WaveformPlayer({ entry }: { entry: Entry }) {
     if (status.playing) live(true, status.currentTime, next);
   };
 
-  const [scrubber] = useState(() => createScrubber(setScrub));
+  const navigation = useNavigation();
+  const [scrubber] = useState(() => createScrubber(setScrub, (hold) => navigation.setOptions({ gestureEnabled: !hold })));
   useEffect(() => {
     scrubber.onSeek((p: number) => {
       const t = p * duration;
