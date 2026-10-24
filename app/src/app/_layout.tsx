@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, AppState, Platform, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, useColorScheme, View } from "react-native";
 import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Device from "expo-device";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { LockScreen } from "@/components/LockScreen";
 import { Mascot } from "@/components/Mascot";
+import { ToastHost } from "@/components/ui";
 import { startLockWatcher, useLocked } from "@/lib/lock";
 import { appVersion } from "@/lib/api";
 import { flush, installGlobalHandlers, logger, pruneLogs, sessionId } from "@/lib/log";
 import { loadState, resumePending, useLoaded, useStore } from "@/lib/store";
+import { applyScheme, colors, type Scheme } from "@/lib/theme";
 import { logRunningUpdate, startForegroundChecks } from "@/lib/updates";
-import { colors } from "@/lib/theme";
 
 const log = logger("app");
 installGlobalHandlers();
@@ -33,7 +34,17 @@ export default function RootLayout() {
   const pathname = usePathname();
   const locked = useLocked();
   const lockEnabled = useStore((s) => s.settings.lockEnabled);
+  const themePref = useStore((s) => s.settings.theme);
+  const system = useColorScheme();
   const [appState, setAppState] = useState(AppState.currentState);
+
+  const scheme: Scheme = themePref === "light" || themePref === "dark" ? themePref : system === "dark" ? "dark" : "light";
+  // Palette must be in place before any child renders; the key below remounts on change.
+  applyScheme(scheme);
+
+  useEffect(() => {
+    log.info("theme", { pref: themePref, system, scheme });
+  }, [themePref, system, scheme]);
 
   useEffect(() => {
     log.info("route", { pathname });
@@ -49,15 +60,17 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
+    <SafeAreaProvider key={scheme}>
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       {loaded ? (
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
           <Stack.Screen name="record" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
           <Stack.Screen name="processing" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
           <Stack.Screen name="write" options={{ presentation: "modal" }} />
+          <Stack.Screen name="edit/[id]" options={{ presentation: "modal" }} />
         </Stack>
       ) : null}
+      {loaded ? <ToastHost /> : null}
       {loaded && locked ? <LockScreen /> : null}
       {loaded && lockEnabled && !locked && appState !== "active" ? (
         // Hides journal content in the app switcher snapshot.

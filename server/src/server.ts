@@ -7,7 +7,7 @@ import path from "node:path";
 import { z } from "zod";
 import { config } from "./config.ts";
 import { transcribe, UpstreamError } from "./groq.ts";
-import { analyzeEntry, chat, insightsFor, RefusalError } from "./claude.ts";
+import { analyzeEntry, chat, insightsFor, RefusalError, semanticSearch } from "./claude.ts";
 import { publishIpa, PublishConflict } from "./publish.ts";
 import { listUpdates, manifestResponse, storeUpdate } from "./updates.ts";
 
@@ -150,6 +150,13 @@ app.post("/v1/insights", async (req) => {
   const { insights, meta } = await insightsFor(body.entries);
   req.log.info({ claude: meta, entries: body.entries.length }, "insights");
   return insights;
+});
+
+app.post("/v1/search", async (req) => {
+  const body = z.object({ query: z.string().min(1), entries: z.array(EntryCtx.extend({ index: z.number() })).min(1) }).parse(req.body);
+  const { results, meta } = await semanticSearch(body.query, body.entries);
+  req.log.info({ claude: meta, entries: body.entries.length, hits: results.length }, "search");
+  return { results };
 });
 
 app.post("/v1/chat", async (req) => {

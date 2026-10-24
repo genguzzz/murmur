@@ -20,7 +20,7 @@ export default function Chats() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopBar title="对话" />
       {chats.length === 0 ? (
-        <EmptyState text="聊聊你说过的那些事" />
+        <EmptyState text="你的对话都在这里" />
       ) : (
         <FlatList
           data={[...chats].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))}

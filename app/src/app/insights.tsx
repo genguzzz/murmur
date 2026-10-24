@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
-import { Bubble, Card, PillButton, SectionTitle, TopBar, styles as ui } from "@/components/ui";
+import { Bubble, Card, PillButton, Screen, SectionTitle, TopBar, styles as ui } from "@/components/ui";
 import { describeError } from "@/lib/api";
 import { logger } from "@/lib/log";
 import { refreshInsights, useStore } from "@/lib/store";
@@ -31,7 +31,7 @@ export default function Insights() {
   const stale = cache && cache.entryCount !== doneCount;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <Screen>
       <TopBar title="规律与洞察" />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
         {!cache ? (
@@ -52,6 +52,32 @@ export default function Insights() {
                 </Card>
               ))}
             </View>
+            {cache.data.people?.length ? (
+              <>
+                <SectionTitle icon="people-outline" title="你常想到的人" />
+                <View style={{ gap: 10 }}>
+                  {cache.data.people.map((p) => (
+                    <Card key={p.name}>
+                      <Text style={ui.title}>{p.name}</Text>
+                      <Text style={[ui.body, { marginTop: 4 }]}>{p.detail}</Text>
+                    </Card>
+                  ))}
+                </View>
+              </>
+            ) : null}
+            {cache.data.recurring?.length ? (
+              <>
+                <SectionTitle icon="alert-circle-outline" title="反复出现的事" />
+                <View style={{ gap: 10 }}>
+                  {cache.data.recurring.map((r) => (
+                    <Card key={r.title}>
+                      <Text style={ui.title}>{r.title} · {r.count} 次</Text>
+                      <Text style={[ui.body, { marginTop: 4 }]}>{r.detail}</Text>
+                    </Card>
+                  ))}
+                </View>
+              </>
+            ) : null}
             <SectionTitle icon="compass-outline" title="接下来可以想想" />
             <Card muted><Text style={[ui.body, { color: colors.text }]}>{cache.data.suggestion}</Text></Card>
           </>
@@ -66,6 +92,6 @@ export default function Insights() {
           style={{ marginTop: 28 }}
         />
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

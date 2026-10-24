@@ -1,7 +1,7 @@
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 // The little notebook companion. `mood` changes the mouth.
-export function Mascot({ size = 44, mood = "smile" }: { size?: number; mood?: "smile" | "talk" | "calm" }) {
+export function Mascot({ size = 44, mood = "smile", glasses }: { size?: number; mood?: "smile" | "talk" | "calm"; glasses?: boolean }) {
   const mouth =
     mood === "talk"
       ? <Circle cx="50" cy="60" r="5" fill="#463022" />
@@ -20,6 +20,13 @@ export function Mascot({ size = 44, mood = "smile" }: { size?: number; mood?: "s
       <Circle cx="37" cy="55" r="4" fill="#E8968A" opacity={0.6} />
       <Circle cx="67" cy="55" r="4" fill="#E8968A" opacity={0.6} />
       {mouth}
+      {glasses ? (
+        <>
+          <Circle cx="43" cy="46" r="8" fill="none" stroke="#463022" strokeWidth="2.6" />
+          <Circle cx="61" cy="46" r="8" fill="none" stroke="#463022" strokeWidth="2.6" />
+          <Path d="M51 46 H53" stroke="#463022" strokeWidth="2.6" strokeLinecap="round" />
+        </>
+      ) : null}
     </Svg>
   );
 }

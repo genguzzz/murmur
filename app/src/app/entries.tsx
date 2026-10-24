@@ -64,7 +64,7 @@ export default function Entries() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10, marginHorizontal: -18 }} contentContainerStyle={{ paddingHorizontal: 18, gap: 8 }}>
             {themes.map((t) => (
               <Pressable key={t} onPress={() => setTheme(theme === t ? null : t)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: theme === t ? colors.primary : colors.card, borderWidth: 1, borderColor: theme === t ? colors.primary : colors.border }}>
-                <Text style={{ color: theme === t ? "#fff" : colors.textSoft, fontSize: 13 }}>{t}</Text>
+                <Text style={{ color: theme === t ? colors.onPrimary : colors.textSoft, fontSize: 13 }}>{t}</Text>
               </Pressable>
             ))}
           </ScrollView>
@@ -81,7 +81,7 @@ export default function Entries() {
             item.type === "day" ? (
               <Text style={[ui.faint, { fontWeight: "700", marginTop: 8 }]}>{item.label}</Text>
             ) : (
-              <EntryCard entry={item.entry} onPress={() => router.push(`/entry/${item.entry.id}`)} />
+              <EntryCard full entry={item.entry} onPress={() => router.push(`/entry/${item.entry.id}`)} />
             )
           }
         />

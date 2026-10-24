@@ -6,7 +6,7 @@ import * as Device from "expo-device";
 import * as Sharing from "expo-sharing";
 import { useRouter } from "expo-router";
 import { File, Paths } from "expo-file-system";
-import { Card, PillButton, SectionTitle, TopBar, styles as ui } from "@/components/ui";
+import { Card, PillButton, SectionTitle, TopBar, styles as ui, tap } from "@/components/ui";
 import { appVersion, describeError, ping, uploadLogs } from "@/lib/api";
 import { authenticateBiometric, biometricKind, disableLock } from "@/lib/lock";
 import { collectLogs, logger, recentLines, sessionId } from "@/lib/log";
@@ -140,6 +140,15 @@ export default function Settings() {
         <SectionTitle icon="person-outline" title="称呼" />
         <Field value={name} onChange={setName} placeholder="首页问候用的名字（可空）" />
 
+        <SectionTitle icon="contrast-outline" title="外观" />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {([["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]] as const).map(([v, label]) => (
+            <Pressable key={v} onPress={() => { tap(); updateSettings({ theme: v }); }} style={{ flex: 1, height: 40, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: settings.theme === v ? colors.primary : colors.card, borderWidth: 1, borderColor: settings.theme === v ? colors.primary : colors.border }}>
+              <Text style={{ color: settings.theme === v ? colors.onPrimary : colors.text }}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
         <SectionTitle icon="lock-closed-outline" title="隐私锁" />
         <Card style={{ gap: 14 }}>
           <ToggleRow title="密码锁" subtitle="打开 App 时需要 4 位密码" value={settings.lockEnabled} onChange={toggleLock} />
@@ -151,7 +160,7 @@ export default function Settings() {
                 <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
                   {([[0, "立即"], [60, "1 分钟"], [300, "5 分钟"]] as const).map(([v, label]) => (
                     <Pressable key={v} onPress={() => updateSettings({ lockDelaySec: v })} style={{ flex: 1, height: 36, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: settings.lockDelaySec === v ? colors.primary : colors.bg, borderWidth: 1, borderColor: settings.lockDelaySec === v ? colors.primary : colors.border }}>
-                      <Text style={{ color: settings.lockDelaySec === v ? "#fff" : colors.text, fontSize: 13 }}>{label}</Text>
+                      <Text style={{ color: settings.lockDelaySec === v ? colors.onPrimary : colors.text, fontSize: 13 }}>{label}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -174,7 +183,7 @@ export default function Settings() {
         <View style={{ flexDirection: "row", gap: 8 }}>
           {([["auto", "自动"], ["zh", "中文"], ["en", "English"]] as const).map(([v, label]) => (
             <Pressable key={v} onPress={() => updateSettings({ language: v })} style={{ flex: 1, height: 40, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: settings.language === v ? colors.primary : colors.card, borderWidth: 1, borderColor: settings.language === v ? colors.primary : colors.border }}>
-              <Text style={{ color: settings.language === v ? "#fff" : colors.text }}>{label}</Text>
+              <Text style={{ color: settings.language === v ? colors.onPrimary : colors.text }}>{label}</Text>
             </Pressable>
           ))}
         </View>

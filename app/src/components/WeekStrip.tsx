@@ -1,9 +1,10 @@
 import { Text, View } from "react-native";
 import type { Entry } from "@/lib/store";
 import { dayKey, startOfWeek } from "@/lib/format";
-import { colors, MOOD_COLORS } from "@/lib/theme";
+import { colors } from "@/lib/theme";
+import { MoodStamp } from "./MoodStamp";
 
-// Seven day tiles (Sun..Sat) tinted with that day's most recent mood.
+// Seven day tiles (Sun..Sat) showing that day's most recent mood stamp.
 export function WeekStrip({ entries }: { entries: Entry[] }) {
   const start = startOfWeek();
   const today = dayKey(new Date());
@@ -20,20 +21,13 @@ export function WeekStrip({ entries }: { entries: Entry[] }) {
         const k = dayKey(d);
         const mood = moodByDay.get(k);
         return (
-          <View key={k} style={{ alignItems: "center", gap: 6 }}>
-            <Text style={{ fontSize: 11, color: k === today ? colors.primaryDark : colors.textFaint, fontWeight: k === today ? "700" : "400" }}>
+          <View key={k} style={{ alignItems: "center", gap: 7 }}>
+            <Text style={{ fontSize: 11, color: k === today ? colors.primary : colors.textFaint, fontWeight: k === today ? "700" : "500" }}>
               {"日一二三四五六"[i]}
             </Text>
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 9,
-                backgroundColor: mood ? MOOD_COLORS[mood] : colors.cardMuted,
-                borderWidth: k === today ? 2 : 0,
-                borderColor: colors.primary,
-              }}
-            />
+            <View style={{ borderRadius: 10, borderWidth: k === today ? 2 : 0, borderColor: colors.primary, padding: k === today ? 1 : 3 }}>
+              {mood ? <MoodStamp mood={mood} size={32} /> : <View style={{ width: 32, height: 32, borderRadius: 7, backgroundColor: colors.cardMuted }} />}
+            </View>
           </View>
         );
       })}

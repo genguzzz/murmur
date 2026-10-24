@@ -1,11 +1,18 @@
 import { ActivityIndicator, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Card, styles as ui } from "@/components/ui";
+import { Card, Chip, styles as ui } from "@/components/ui";
+import { MoodStamp } from "@/components/MoodStamp";
 import type { Entry } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
-import { colors, MOOD_COLORS } from "@/lib/theme";
+import { colors, MOOD_LABELS } from "@/lib/theme";
 
-export function EntryCard({ entry, onPress }: { entry: Entry; onPress: () => void }) {
+function clockTime(iso: string) {
+  const d = new Date(iso);
+  return `${d.getHours()}:${`${d.getMinutes()}`.padStart(2, "0")}`;
+}
+
+// `full` adds the stamp, time and theme chips (calendar/list); compact is for Home.
+export function EntryCard({ entry, onPress, full }: { entry: Entry; onPress: () => void; full?: boolean }) {
   if (entry.status === "transcribing" || entry.status === "analyzing") {
     return (
       <Card onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -19,20 +26,44 @@ export function EntryCard({ entry, onPress }: { entry: Entry; onPress: () => voi
   }
   if (entry.status === "failed") {
     return (
-      <Card onPress={onPress} style={{ borderWidth: 1, borderColor: colors.danger + "66" }}>
-        <Text style={[ui.title, { color: colors.danger }]}>处理失败，点开重试</Text>
+      <Card onPress={onPress} style={{ borderColor: colors.danger + "66" }}>
+        <Text style={[ui.title, { color: colors.danger }]}>处理失败，点开查看</Text>
         <Text style={[ui.body, { marginTop: 4 }]}>{entry.error}</Text>
+      </Card>
+    );
+  }
+  if (!full) {
+    return (
+      <Card onPress={onPress}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={[ui.title, { flex: 1 }]} numberOfLines={1}>{entry.title}</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+        </View>
+        <Text style={[ui.body, { marginTop: 6 }]} numberOfLines={2}>{entry.summary}</Text>
       </Card>
     );
   }
   return (
     <Card onPress={onPress}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        {entry.mood ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: MOOD_COLORS[entry.mood] ?? colors.primary }} /> : null}
-        <Text style={[ui.title, { flex: 1 }]} numberOfLines={1}>{entry.title}</Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        {entry.mood ? <MoodStamp mood={entry.mood} size={52} /> : null}
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            {entry.mood ? <MoodStamp mood={entry.mood} size={16} /> : null}
+            <Text style={[ui.title, { fontSize: 17, flex: 1 }]} numberOfLines={1}>{entry.title}</Text>
+          </View>
+          <Text style={[ui.faint, { marginTop: 4, fontSize: 13 }]}>
+            {clockTime(entry.createdAt)}
+            {entry.moodLabel || entry.mood ? ` · ${entry.moodLabel ?? MOOD_LABELS[entry.mood!]}` : ""}
+          </Text>
+        </View>
       </View>
-      <Text style={[ui.body, { marginTop: 6 }]} numberOfLines={3}>{entry.summary}</Text>
+      <Text style={[ui.body, { marginTop: 10, color: colors.text, opacity: 0.85 }]} numberOfLines={2}>{entry.summary}</Text>
+      {entry.themes?.length ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+          {entry.themes.slice(0, 3).map((t) => <Chip key={t} text={t} />)}
+        </View>
+      ) : null}
     </Card>
   );
 }

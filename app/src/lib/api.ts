@@ -125,6 +125,10 @@ export interface Analysis {
   themes: string[];
   follow_up: string;
   insight: string;
+  insight_title?: string;
+  reflection?: string;
+  action?: string;
+  quote?: string;
 }
 
 export function analyze(body: { text: string; prompt?: string; recent: { date: string; title: string; summary: string }[] }) {
@@ -144,11 +148,17 @@ export interface Insights {
   headline: string;
   body: string;
   patterns: { title: string; detail: string }[];
+  people?: { name: string; detail: string }[];
+  recurring?: { title: string; detail: string; count: number }[];
   suggestion: string;
 }
 
 export function insights(entries: EntryContext[]) {
   return request<Insights>("/v1/insights", { method: "POST", json: { entries }, timeoutMs: 180_000, tag: "insights" });
+}
+
+export function search(query: string, entries: (EntryContext & { index: number })[]) {
+  return request<{ results: { index: number; reason: string }[] }>("/v1/search", { method: "POST", json: { query, entries }, timeoutMs: 60_000, tag: "search" });
 }
 
 export function chat(messages: { role: "user" | "assistant"; content: string }[], entries: EntryContext[]) {

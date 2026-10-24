@@ -24,7 +24,8 @@ export function PinPad({ title, bubble, onComplete, biometric, onBiometric, foot
   const submit = (full: string) => {
     setBusy(true);
     void Promise.resolve(onComplete(full)).then((ok) => {
-      if (!ok) {
+      if (ok) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      else {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Animated.sequence(
           [12, -12, 8, -8, 0].map((x) => Animated.timing(shake, { toValue: x, duration: 55, useNativeDriver: true })),
@@ -37,7 +38,8 @@ export function PinPad({ title, bubble, onComplete, biometric, onBiometric, foot
 
   const press = (d: string) => {
     if (busy || pin.length >= LENGTH) return;
-    void Haptics.selectionAsync();
+    // A firm tap per digit, like the system passcode pad.
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const next = pin + d;
     setPin(next);
     if (next.length === LENGTH) submit(next);
@@ -50,7 +52,7 @@ export function PinPad({ title, bubble, onComplete, biometric, onBiometric, foot
           <Mascot size={92} />
           <Ionicons name="lock-closed" size={18} color={colors.primaryDark} style={{ position: "absolute", right: 4, bottom: 18 }} />
         </View>
-        <View style={{ marginTop: 12, backgroundColor: colors.card, borderRadius: 16, paddingHorizontal: 22, paddingVertical: 10, borderWidth: 1.5, borderColor: colors.border, ...shadow }}>
+        <View style={{ marginTop: 12, backgroundColor: colors.card, borderRadius: 16, paddingHorizontal: 22, paddingVertical: 10, borderWidth: 1.5, borderColor: colors.border, ...shadow() }}>
           <Text style={{ fontSize: 16, color: colors.text }}>{bubble}</Text>
         </View>
       </View>
@@ -66,12 +68,12 @@ export function PinPad({ title, bubble, onComplete, biometric, onBiometric, foot
       <View style={{ width: 300, flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 18 }}>
         {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => <Key key={d} label={d} onPress={() => press(d)} />)}
         {biometric && onBiometric ? (
-          <Key icon={biometric === "faceid" ? "scan-outline" : "finger-print"} onPress={onBiometric} />
+          <Key icon={biometric === "faceid" ? "scan-outline" : "finger-print"} onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onBiometric(); }} />
         ) : (
           <View style={{ width: 84, height: 84 }} />
         )}
         <Key label="0" onPress={() => press("0")} />
-        <Key icon="backspace-outline" onPress={() => setPin(pin.slice(0, -1))} />
+        <Key icon="backspace-outline" onPress={() => { if (pin) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPin(pin.slice(0, -1)); }} />
       </View>
 
       {footer ? <Text style={{ marginTop: 34, color: colors.textSoft, fontSize: 14, textAlign: "center" }}>{footer}</Text> : null}

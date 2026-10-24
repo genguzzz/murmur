@@ -31,7 +31,13 @@ export interface Entry {
   followUp?: string;
   followUpDone?: boolean;
   insight?: string;
+  insightTitle?: string;
+  reflection?: string;
+  action?: string;
+  quote?: string;
   words?: number;
+  keepOnHome?: boolean; // pinned to Home's "回头再看"
+  returnAt?: string; // resurfaces on Home from this time
 }
 
 export interface ChatMessage {
@@ -57,6 +63,7 @@ export interface Settings {
   lockEnabled: boolean;
   lockBiometrics: boolean;
   lockDelaySec: number;
+  theme: "system" | "light" | "dark";
 }
 
 export interface InsightsCache {
@@ -75,7 +82,7 @@ interface State {
 const DEFAULT_STATE: State = {
   entries: [],
   chats: [],
-  settings: { server: api.DEFAULT_SERVER, token: "", language: "auto", name: "", lockEnabled: false, lockBiometrics: false, lockDelaySec: 60 },
+  settings: { server: api.DEFAULT_SERVER, token: "", language: "auto", name: "", lockEnabled: false, lockBiometrics: false, lockDelaySec: 60, theme: "system" },
 };
 
 let state: State = DEFAULT_STATE;
@@ -245,6 +252,42 @@ export function markFollowUpDone(id: string) {
   patchEntry(id, { followUpDone: true });
 }
 
+export function setKeepOnHome(id: string, keep: boolean) {
+  patchEntry(id, { keepOnHome: keep, ...(keep ? {} : { returnAt: undefined }) });
+  log.info("keep on home", { id, keep });
+}
+
+export function setReturnAt(id: string, at: string | undefined) {
+  patchEntry(id, { returnAt: at });
+  log.info("return at", { id, at });
+}
+
+export function editEntry(id: string, patch: { title?: string; text?: string }) {
+  patchEntry(id, { ...patch, ...(patch.text !== undefined ? { words: countWords(patch.text) } : {}) });
+  log.info("entry edited", { id, fields: Object.keys(patch) });
+}
+
+// Re-run the AI pass on the existing transcript.
+export function reanalyze(id: string) {
+  patchEntry(id, { status: "analyzing", error: undefined });
+  void processEntry(id);
+}
+
+// Entries Home should bring back: pinned ones and those whose return time has come.
+export function comeBackEntries(entries: Entry[], now = Date.now()): Entry[] {
+  return sortedEntries(entries).filter((e) => e.keepOnHome || (e.returnAt && new Date(e.returnAt).getTime() <= now));
+}
+
+export async function semanticSearch(query: string): Promise<{ entry: Entry; reason: string }[]> {
+  const done = sortedEntries(state.entries).filter((e) => e.status === "done");
+  if (!done.length) return [];
+  const { results } = await api.search(
+    query,
+    done.map((e, index) => ({ index, date: dayKey(e.createdAt), title: e.title ?? "", summary: e.summary ?? "", themes: e.themes })),
+  );
+  return results.filter((r) => done[r.index]).map((r) => ({ entry: done[r.index], reason: r.reason }));
+}
+
 const running = new Set<string>();
 
 // Transcribe (voice only) then analyze. Safe to call again for retry/resume.
@@ -288,6 +331,10 @@ export async function processEntry(id: string): Promise<void> {
       themes: a.themes,
       followUp: a.follow_up,
       insight: a.insight,
+      insightTitle: a.insight_title,
+      reflection: a.reflection,
+      action: a.action,
+      quote: a.quote,
       words: countWords(a.cleaned_text || e.rawText || ""),
     });
     log.info("entry processed", { id, ms: Date.now() - t0, mood: a.mood });

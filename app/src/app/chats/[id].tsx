@@ -75,7 +75,7 @@ export default function ChatScreen() {
                 paddingVertical: 10,
               }}
             >
-              <Text selectable style={{ color: item.role === "user" ? "#fff" : item.error ? colors.danger : colors.text, fontSize: 15, lineHeight: 22 }}>{item.content}</Text>
+              <Text selectable style={{ color: item.role === "user" ? colors.onPrimary : item.error ? colors.danger : colors.text, fontSize: 15, lineHeight: 22 }}>{item.content}</Text>
             </View>
           )}
           ListFooterComponent={sending ? <ActivityIndicator style={{ alignSelf: "flex-start", margin: 8 }} color={colors.primary} /> : undefined}
@@ -91,7 +91,7 @@ export default function ChatScreen() {
           style={{ flex: 1, maxHeight: 120, minHeight: 44, backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border }}
         />
         <Pressable onPress={() => void send(text)} disabled={!text.trim() || sending} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: text.trim() && !sending ? colors.primary : colors.border, alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name="arrow-up" size={20} color="#fff" />
+          <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
         </Pressable>
       </View>
       <Text style={{ textAlign: "center", fontSize: 11, color: colors.textFaint, paddingBottom: insets.bottom ? 0 : 6, marginTop: -4 }}>AI 会出错，重要的事以你自己的记录为准。</Text>
