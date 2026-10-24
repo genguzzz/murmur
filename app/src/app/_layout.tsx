@@ -9,7 +9,7 @@ import { LockScreen } from "@/components/LockScreen";
 import { Mascot } from "@/components/Mascot";
 import { PermissionHost } from "@/components/PermissionPrompt";
 import { ToastHost } from "@/components/ui";
-import { startLockWatcher, useLocked } from "@/lib/lock";
+import { isAuthenticating, startLockWatcher, useLocked } from "@/lib/lock";
 import { appVersion } from "@/lib/api";
 import { flush, installGlobalHandlers, logger, pruneLogs, sessionId } from "@/lib/log";
 import { getState, loadState, resumePending, resyncTodoReminders, useLoaded, useStore } from "@/lib/store";
@@ -90,7 +90,7 @@ export default function RootLayout() {
       {loaded ? <ToastHost /> : null}
       {loaded ? <PermissionHost /> : null}
       {loaded && locked ? <LockScreen /> : null}
-      {loaded && lockEnabled && !locked && appState !== "active" ? (
+      {loaded && lockEnabled && !locked && appState !== "active" && !isAuthenticating() ? (
         // Hides journal content in the app switcher snapshot.
         <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 200, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
           <Mascot size={96} mood="calm" />

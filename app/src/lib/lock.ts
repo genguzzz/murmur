@@ -90,7 +90,13 @@ export async function biometricKind(): Promise<"faceid" | "touchid" | null> {
   return null;
 }
 
+// True from the Face ID prompt until the app is "active" again. iOS keeps the app
+// "inactive" for ~2 s after a successful scan; the privacy cover must not show then.
+let authenticating = false;
+export const isAuthenticating = () => authenticating;
+
 export async function authenticateBiometric(): Promise<boolean> {
+  authenticating = true;
   try {
     const r = await LocalAuthentication.authenticateAsync({
       promptMessage: "解锁 Murmur",
@@ -108,6 +114,9 @@ export async function authenticateBiometric(): Promise<boolean> {
   } catch (e) {
     log.error("biometric error", e);
     return false;
+  } finally {
+    // No prompt was shown (e.g. instant failure): nothing to wait for.
+    if (AppState.currentState === "active") authenticating = false;
   }
 }
 
@@ -147,6 +156,7 @@ export function startLockWatcher() {
   if (getState().settings.lockEnabled) setLocked(true);
   // Only "background" counts: the Face ID sheet itself makes the app "inactive".
   AppState.addEventListener("change", (s) => {
+    if (s !== "inactive") authenticating = false;
     const { lockEnabled, lockDelaySec } = getState().settings;
     if (!lockEnabled) return;
     if (s === "background") backgroundAt = Date.now();
