@@ -1,9 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { config } from "./config.ts";
+import { upstreamFetch } from "./upstream.ts";
 
 // ANTHROPIC_API_KEY is read from the environment by the SDK.
-const client = new Anthropic({ maxRetries: 2, timeout: 120_000 });
+const client = new Anthropic({ maxRetries: 2, timeout: 120_000, fetch: upstreamFetch });
 
 type Effort = "low" | "medium" | "high";
 

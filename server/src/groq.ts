@@ -41,6 +41,7 @@ export async function transcribe(
     form.append("prompt", "以下是普通话的日记录音，请使用简体中文和标点。");
   }
 
+  // Groq goes direct; only Claude uses the residential proxy (see upstream.ts).
   const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
     method: "POST",
     headers: { Authorization: `Bearer ${config.groqKey}` },

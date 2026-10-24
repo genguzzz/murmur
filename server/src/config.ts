@@ -22,4 +22,7 @@ export const config = {
   groqKey: required("GROQ_API_KEY"),
   groqModel: process.env.GROQ_MODEL ?? "whisper-large-v3-turbo",
   claudeModel: process.env.CLAUDE_MODEL ?? "claude-sonnet-5",
+  // Claude traffic must leave via the residential proxy (llm-proxy.service on the
+  // host: xray http inbound -> Cox SS). No direct fallback.
+  llmProxy: process.env.LLM_PROXY ?? "http://127.0.0.1:10809",
 };

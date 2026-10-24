@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Murmur voice journal backend: Groq transcription, Claude analysis/chat, log uploads, IPA publishing",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "start": "node src/server.ts",
     "typecheck": "tsc --noEmit"
@@ -13,6 +15,7 @@
     "@anthropic-ai/sdk": "^1.2.0",
     "@fastify/multipart": "^10.1.0",
     "fastify": "^5.0.0",
+    "undici": "^8.12.3",
     "zod": "^4.6.0"
   },
   "devDependencies": {
