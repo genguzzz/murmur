@@ -276,6 +276,14 @@ export default function Settings() {
               </ScrollView>
             ) : null}
           </Card>
+          <ToggleRow
+            icon="stats-chart-outline"
+            title="上报使用统计"
+            subtitle="只发送用了哪些功能、是否成功，不含任何记录内容"
+            value={settings.analytics}
+            onChange={(v) => updateSettings({ analytics: v })}
+          />
+          <NavRow icon="hardware-chip-outline" title="能力自检" subtitle="测试相机、相册、定位、日历等原生能力" onPress={() => router.push("/diagnostics")} />
         </Section>
 
         <Section icon="folder-open" title="数据与隐私">

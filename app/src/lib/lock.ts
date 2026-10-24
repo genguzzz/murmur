@@ -6,6 +6,7 @@ import * as Crypto from "expo-crypto";
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
 import { logger } from "./log";
+import { track } from "./track";
 import { getState, updateSettings } from "./store";
 
 const log = logger("lock");
@@ -65,6 +66,7 @@ export async function verifyPin(pin: string): Promise<boolean> {
   }
   const [salt, digest] = stored.split(":");
   const ok = (await hash(salt, pin)) === digest;
+  track("unlock_pin", { ok });
   if (ok) {
     failures = 0;
   } else {
@@ -105,6 +107,7 @@ export async function authenticateBiometric(): Promise<boolean> {
       fallbackLabel: "",
     });
     log.info("biometric result", r.success ? { success: true } : { success: false, error: r.error });
+    track("unlock_biometric", { ok: r.success, error: r.success ? null : r.error });
     if (r.success || r.error !== "lockout") return r.success;
     // iOS locks Face ID after repeated failed scans and only the device passcode
     // clears it; biometrics-only auth would keep failing instantly until then.

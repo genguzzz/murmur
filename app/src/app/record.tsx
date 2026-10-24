@@ -15,6 +15,7 @@ import {
 } from "expo-audio";
 import { Bubble, PillButton } from "@/components/ui";
 import { logger } from "@/lib/log";
+import { track } from "@/lib/track";
 import { RECORD_OPENERS } from "@/lib/prompts";
 import { audioFile, createVoiceEntry, newId } from "@/lib/store";
 import { clock } from "@/lib/format";
@@ -149,6 +150,7 @@ export default function Record() {
       }
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
       log.info("recording cancelled", { ms: state.durationMillis });
+      track("record_cancelled", { sec: Math.round(state.durationMillis / 1000), mode: todoMode ? "todo" : "note" });
       router.back();
     };
     if (state.durationMillis > 5000) {

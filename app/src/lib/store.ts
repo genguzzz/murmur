@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 import { Directory, File, Paths } from "expo-file-system";
 import * as api from "./api";
 import { logger } from "./log";
+import { setTrackingEnabled, timed, track } from "./track";
 import { countWords, dayKey } from "./format";
 import { scheduleRemember, syncTodoReminders, type CheckinPrefs } from "./notify";
 import { addDays, dueLabel, isOverdue, localNow, nextOccurrence, overdueDays, sortTodos, timeZone, today, type Todo, type TodoDraft } from "./todo";
@@ -96,6 +97,7 @@ export interface Settings {
   look: "original" | "glasses" | "beret";
   checkins: CheckinPrefs;
   todoAllDayTime: string; // reminder time for to-dos with a date but no time
+  analytics: boolean; // upload usage events (no content) to the server
   memberSince?: string;
 }
 
@@ -127,6 +129,7 @@ const DEFAULT_STATE: State = {
     look: "original",
     checkins: { morning: { enabled: false, time: "08:30" }, evening: { enabled: false, time: "21:30" }, remember: false },
     todoAllDayTime: "09:00",
+    analytics: true,
   },
 };
 
@@ -158,7 +161,14 @@ export function newId(): string {
 // ---------- persistence ----------
 
 // `beforeReady` runs after the state is read but before screens render (used to lock first).
-export async function loadState(beforeReady?: () => void): Promise<void> {
+// Idempotent: a background task may call it while the UI launch is already loading.
+let loading: Promise<void> | null = null;
+export function loadState(beforeReady?: () => void): Promise<void> {
+  loading ??= readState(beforeReady);
+  return loading;
+}
+
+async function readState(beforeReady?: () => void): Promise<void> {
   try {
     let raw: string | null = null;
     if (isWeb) raw = globalThis.localStorage?.getItem(STORAGE_KEY) ?? null;
@@ -181,6 +191,7 @@ export async function loadState(beforeReady?: () => void): Promise<void> {
     scheduleSave();
   }
   api.configureApi(state.settings);
+  setTrackingEnabled(state.settings.analytics);
   beforeReady?.();
   loaded = true;
   emit();
@@ -249,6 +260,7 @@ export function getState(): State {
 export function updateSettings(patch: Partial<Settings>) {
   setState((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   api.configureApi(state.settings);
+  setTrackingEnabled(state.settings.analytics);
   log.info("settings updated", { keys: Object.keys(patch), hasToken: !!state.settings.token, server: state.settings.server });
 }
 
@@ -270,6 +282,7 @@ export function createVoiceEntry(opts: { id: string; audioFile: string; duration
   const entry: Entry = { ...opts, createdAt: new Date().toISOString(), kind: "voice", status: "transcribing" };
   setState((s) => ({ ...s, entries: [entry, ...s.entries] }));
   log.info("voice entry created", { id: entry.id, durationSec: opts.durationSec, prompt: !!opts.prompt });
+  track("entry_created", { kind: "voice", sec: Math.round(opts.durationSec), mode: opts.mode ?? "note", prompt: !!opts.prompt });
   if (opts.followUpOf) patchEntry(opts.followUpOf, { followUpDone: true });
   void processEntry(entry.id);
   return entry;
@@ -279,6 +292,7 @@ export function createTextEntry(text: string, opts: { prompt?: string; followUpO
   const entry: Entry = { id: newId(), createdAt: new Date().toISOString(), kind: "text", status: "analyzing", rawText: text, ...opts };
   setState((s) => ({ ...s, entries: [entry, ...s.entries] }));
   log.info("text entry created", { id: entry.id, chars: text.length });
+  track("entry_created", { kind: "text", chars: text.length, prompt: !!opts.prompt });
   if (opts.followUpOf) patchEntry(opts.followUpOf, { followUpDone: true });
   void processEntry(entry.id);
   return entry;
@@ -392,9 +406,11 @@ export async function processEntry(id: string): Promise<void> {
       words: countWords(a.cleaned_text || e.rawText || ""),
     });
     log.info("entry processed", { id, ms: Date.now() - t0, mood: a.mood });
+    track("entry_processed", { kind: e.kind, ms: Date.now() - t0, mood: a.mood });
     void scheduleRemember(state.settings.checkins, { id, title: a.title, followUp: a.follow_up });
   } catch (err) {
     log.error("entry processing failed", { id, ms: Date.now() - t0, err });
+    track("entry_failed", { ms: Date.now() - t0, error: api.describeError(err).slice(0, 60) });
     patchEntry(id, { status: "failed", error: api.describeError(err) });
   } finally {
     running.delete(id);
@@ -431,6 +447,7 @@ async function routeIntent(e: Entry): Promise<"note" | "mixed" | "moved"> {
     const intent = await api.intent(intentRequest(e.rawText!, hint));
     patchEntry(e.id, { intentChecked: true });
     log.info("intent", { id: e.id, hint, kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length });
+    track("intent", { hint, kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length, asks: intent.todos.filter((t) => t.question).length });
     if (intent.kind === "note" || (!intent.todos.length && !intent.completes.length)) return "note";
     const base = { id: e.id, createdAt: e.createdAt, source: e.kind, text: e.rawText!, audioFile: e.audioFile, durationSec: e.durationSec, prompt: e.prompt };
     if (intent.kind === "mixed") {
@@ -505,6 +522,7 @@ export async function sendChat(chatId: string, content: string): Promise<void> {
   }));
   const chat = state.chats.find((c) => c.id === chatId)!;
   try {
+    track("chat_sent", { turns: chat.messages.length });
     const { reply } = await api.chat(
       chat.messages.map((m) => ({ role: m.role, content: m.content })),
       entriesContext(true),
@@ -585,6 +603,7 @@ export function addTodos(drafts: Pick<TodoDraft, "title" | "note" | "date" | "ti
     }));
   setTodos((list) => [...created, ...list]);
   log.info("todos added", { n: created.length, dated: created.filter((t) => t.date).length, source });
+  track("todo_created", { n: created.length, dated: created.filter((t) => t.date).length, repeat: created.filter((t) => t.repeat !== "none").length, source: source ?? "manual" });
   return created;
 }
 
@@ -603,6 +622,7 @@ export function completeTodo(id: string): string | undefined {
   const t = state.todos.find((x) => x.id === id);
   if (!t) return;
   const now = new Date().toISOString();
+  track("todo_completed", { repeat: t.repeat, overdue: isOverdue(t), postponed: t.postponed ?? 0, ageDays: Math.floor((Date.now() - new Date(t.createdAt).getTime()) / 86400_000) });
   if (t.repeat !== "none" && t.date) {
     const next = nextOccurrence(t);
     updateTodo(id, { date: next, lastDoneAt: now });
@@ -620,6 +640,7 @@ export function postponeTodo(id: string) {
   if (!t) return;
   const base = t.date && t.date > today() ? t.date : today();
   updateTodo(id, { date: addDays(base, 1), postponed: (t.postponed ?? 0) + 1 });
+  track("todo_postponed", { times: (t.postponed ?? 0) + 1 });
 }
 
 export function clearDoneTodos() {
@@ -652,12 +673,14 @@ export function confirmPending(id: string, drafts: TodoDraft[], completeIds: str
   for (const tid of completeIds) completeTodo(tid);
   dropPending(id, true);
   log.info("pending confirmed", { id, created: created.length, completed: completeIds.length });
+  track("pending_confirmed", { proposed: p.drafts.length, created: created.length, completed: completeIds.length, kind: p.kind });
   return created;
 }
 
 export function dismissPending(id: string) {
   dropPending(id, true);
   log.info("pending dismissed", { id });
+  track("pending_dismissed");
 }
 
 // "This was a note after all": turn the memo back into a journal entry.
@@ -681,6 +704,7 @@ export function pendingAsNote(id: string): string | undefined {
   };
   setState((s) => ({ ...s, entries: [entry, ...s.entries.filter((e) => e.id !== p.id)], inbox: s.inbox.filter((x) => x.id !== id) }));
   log.info("pending kept as note", { id });
+  track("pending_as_note");
   void processEntry(entry.id);
   return entry.id;
 }
@@ -693,6 +717,7 @@ export async function quickAddTodo(text: string): Promise<{ created: Todo[]; rep
   log.info("quick add", { kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length });
   const p = toPending({ id: newId(), createdAt: new Date().toISOString(), source: "text", text }, { ...intent, kind: "todo" }, open);
   const needsInput = p.drafts.some((d) => d.question) || p.completes.length > 0 || p.drafts.length === 0;
+  track("todo_quick_add", { todos: p.drafts.length, confirm: needsInput });
   if (needsInput) {
     if (!p.drafts.length && !p.completes.length) {
       // Nothing recognisable: keep the user's words as the task.
@@ -723,7 +748,7 @@ export async function refreshBrief(): Promise<void> {
     .filter((x): x is { t: Todo; at: string } => !!x.at && now.getTime() - new Date(x.at).getTime() < 3 * dayMs)
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 8);
-  const data = await api.brief({
+  const data = await timed("brief", () => api.brief({
     now: localNow(now),
     ...(state.settings.name ? { name: state.settings.name } : {}),
     todos: open.map((t, index) => ({
@@ -739,7 +764,7 @@ export async function refreshBrief(): Promise<void> {
       .filter((e) => e.status === "done")
       .slice(0, 6)
       .map((e) => ({ date: dayKey(e.createdAt), title: e.title ?? "", summary: e.summary ?? "", ...(e.moodLabel ? { mood: e.moodLabel } : {}) })),
-  });
+  }), { todos: open.length });
   setState((s) => ({ ...s, brief: { key, at: new Date().toISOString(), data, ids: open.map((t) => t.id) } }));
   log.info("brief refreshed", { todos: open.length, focus: data.focus.length, nudges: data.nudges.length });
 }

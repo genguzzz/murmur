@@ -21,6 +21,20 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - Logging: `logger("area")`; log ids, counts, timings, errors — never journal text or transcripts. Users debug via Settings → 上传日志; read it on the server at `/opt/voicememo/data/logs/<id>.log`.
 - React compiler lint is on: no reading refs during render, no `Date.now()`/`new Date()` in render (keep `now` in state), no `setState` straight inside effects.
 
+## Native capabilities (runtime 4)
+
+- The binary already ships camera, photo picker/library, image compression, location + geofences, Calendar/Reminders, contacts, document picker, TTS + live speech recognition, background refresh, SQLite/KV, network, localization, keep-awake, in-app browser, quick actions, SF Symbols, glass effect, reanimated + gesture-handler. Features built on these ship by OTA.
+- Feature code calls `src/lib/device` (never `expo-*` directly): wrappers ask permission through `ensureAccess`/`needAccess` (in-app explainer → system prompt → Settings when denied), return `null` on cancel, throw `DeviceError` (`denied`/`unavailable`/`failed`), and log + track every call.
+- Check `has(capability)` before using a module added after runtime 4. Adding any native module or permission string still means: bump `RUNTIME_VERSION`, `release.sh`.
+- Copy picked/taken files into app storage with `keepMedia` (sync copy) before relying on them.
+- Headless code (geofence/background tasks) reads `kv` (SQLite), not the journal store; tasks are defined at module load in `lib/device/*`.
+- Settings → 调试 → 能力自检 exercises every wrapper on the device.
+
+## Usage events (埋点)
+
+- `track(name, props)` from `lib/track.ts`; batched to `/v1/events` every 30 s and on background; stored at `/opt/voicememo/data/events/YYYY-MM-DD.jsonl`. Summary: `curl -H "authorization: Bearer $ADMIN_TOKEN" https://voice.gugenzzz.top/admin/events?day=YYYY-MM-DD[&name=x]`.
+- Props are counts, durations, enums and error codes only — never titles, text, transcripts, names or places. `timed(name, fn)` records ok/ms/code; `device.*` events come from the wrappers. Users can turn it off in Settings.
+
 ## To-dos and the model
 
 - Every memo goes through `/v1/intent` after transcription (`routeIntent` in the store): `note` → journal; `todo` → removed from the journal into `inbox` and confirmed on `/confirm/[id]`; `mixed` → both. Intent failures fall back to a note, except in to-do mode, where they surface as a retryable error.

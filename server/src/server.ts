@@ -2,7 +2,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { config } from "./config.ts";
@@ -201,6 +201,36 @@ app.post("/v1/brief", async (req) => {
   const { brief, meta } = await briefFor(body);
   req.log.info({ claude: meta, todos: body.todos.length, entries: body.entries.length }, "brief");
   return brief;
+});
+
+// Usage events (埋点) from the app: content-free names + small props, one JSONL file per day.
+const EventProp = z.union([z.string().max(200), z.number(), z.boolean(), z.null()]);
+app.post("/v1/events", async (req) => {
+  const body = z
+    .object({ events: z.array(z.object({ e: z.string().max(80), t: z.string().max(40), s: z.string().max(20), p: z.record(z.string().max(40), EventProp).optional() })).max(500) })
+    .parse(req.body);
+  if (!body.events.length) return { ok: true };
+  const dir = path.join(config.dataDir, "events");
+  await mkdir(dir, { recursive: true });
+  const app_ = String(req.headers["x-app-version"] ?? "").slice(0, 60);
+  const lines = body.events.map((ev) => JSON.stringify({ ...ev, v: app_ })).join("\n") + "\n";
+  await appendFile(path.join(dir, `${new Date().toISOString().slice(0, 10)}.jsonl`), lines);
+  return { ok: true };
+});
+
+// Quick look at a day's events: counts per name, failures, and the latest few.
+app.get("/admin/events", async (req) => {
+  const q = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), name: z.string().optional() }).parse(req.query);
+  const day = q.day ?? new Date().toISOString().slice(0, 10);
+  const raw = await readFile(path.join(config.dataDir, "events", `${day}.jsonl`), "utf8").catch(() => "");
+  const events = raw.split("\n").filter(Boolean).map((l) => JSON.parse(l) as { e: string; p?: Record<string, unknown> });
+  const counts: Record<string, { n: number; failed: number }> = {};
+  for (const ev of events) {
+    const c = (counts[ev.e] ??= { n: 0, failed: 0 });
+    c.n += 1;
+    if (ev.p?.ok === false) c.failed += 1;
+  }
+  return { day, total: events.length, counts, latest: (q.name ? events.filter((e) => e.e === q.name) : events).slice(-30) };
 });
 
 // Debug log upload from Settings → 上传日志. Stored as <id>.log + <id>.json.

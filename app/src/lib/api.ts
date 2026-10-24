@@ -51,7 +51,7 @@ export function describeError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-async function request<T>(path: string, init: { method?: string; json?: unknown; form?: FormData; timeoutMs?: number; tag?: string }): Promise<T> {
+async function request<T>(path: string, init: { method?: string; json?: unknown; form?: FormData; timeoutMs?: number; tag?: string; quiet?: boolean }): Promise<T> {
   const id = rid();
   const url = `${server}${path}`;
   const started = Date.now();
@@ -63,7 +63,7 @@ async function request<T>(path: string, init: { method?: string; json?: unknown;
     "x-app-version": `${appVersion} ${Platform.OS} ${Platform.Version}`,
   };
   if (init.json !== undefined) headers["content-type"] = "application/json";
-  log.info(`→ ${init.method ?? "GET"} ${path}`, { rid: id, tag: init.tag });
+  if (!init.quiet) log.info(`→ ${init.method ?? "GET"} ${path}`, { rid: id, tag: init.tag });
   let res: Response;
   try {
     res = await fetch(url, {
@@ -75,7 +75,7 @@ async function request<T>(path: string, init: { method?: string; json?: unknown;
   } catch (e) {
     const aborted = controller.signal.aborted;
     const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-    log.error(`✗ ${path} failed before response`, { rid: id, ms: Date.now() - started, aborted, err: e });
+    (init.quiet ? log.warn : log.error)(`✗ ${path} failed before response`, { rid: id, ms: Date.now() - started, aborted, err: e });
     throw new ApiError(0, aborted ? "timeout" : "network", aborted ? "请求超时" : detail, id);
   } finally {
     clearTimeout(timer);
@@ -87,10 +87,10 @@ async function request<T>(path: string, init: { method?: string; json?: unknown;
     try {
       code = (JSON.parse(text) as { error?: string }).error ?? code;
     } catch {}
-    log.error(`✗ ${path} ${res.status}`, { rid: id, ms, body: text.slice(0, 500) });
+    (init.quiet ? log.warn : log.error)(`✗ ${path} ${res.status}`, { rid: id, ms, body: text.slice(0, 500) });
     throw new ApiError(res.status, code, text.slice(0, 200), id);
   }
-  log.info(`← ${path} ${res.status}`, { rid: id, ms, bytes: text.length });
+  if (!init.quiet) log.info(`← ${path} ${res.status}`, { rid: id, ms, bytes: text.length });
   return JSON.parse(text) as T;
 }
 
@@ -203,6 +203,17 @@ export interface BriefRequest {
 
 export function brief(body: BriefRequest) {
   return request<Brief>("/v1/brief", { method: "POST", json: body, timeoutMs: 60_000, tag: "brief" });
+}
+
+export interface TrackEvent {
+  e: string;
+  t: string;
+  s: string;
+  p?: Record<string, string | number | boolean | null>;
+}
+
+export function sendEvents(events: TrackEvent[]) {
+  return request<{ ok: boolean }>("/v1/events", { method: "POST", json: { events }, timeoutMs: 20_000, tag: "events", quiet: true });
 }
 
 export function ping() {

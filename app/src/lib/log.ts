@@ -36,7 +36,14 @@ function stringify(data: unknown): string {
   }
 }
 
+// Lets tracking count errors without log.ts depending on it.
+const errorHooks = new Set<(tag: string, msg: string) => void>();
+export function onLogError(hook: (tag: string, msg: string) => void) {
+  errorHooks.add(hook);
+}
+
 function write(level: Level, tag: string, msg: string, data?: unknown) {
+  if (level === "error") errorHooks.forEach((h) => h(tag, msg));
   const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${sessionId}] ${tag}: ${msg}${data === undefined ? "" : " " + stringify(data)}`;
   memory.push(line);
   if (memory.length > MAX_MEMORY) memory.splice(0, memory.length - MAX_MEMORY);
