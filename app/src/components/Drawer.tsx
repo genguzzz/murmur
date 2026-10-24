@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { Animated, Dimensions, Easing, PanResponder, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Mascot } from "./Mascot";
 import { closeDrawer, openDrawer, useDrawerOpen } from "./drawerState";
@@ -145,15 +146,21 @@ function DrawerRow({ icon, label, hint, onPress }: Item & { onPress: () => void 
   );
 }
 
-// Invisible strip on the left edge of tab screens: swipe right to pull the drawer out.
-export function DrawerEdge() {
+// Wraps the tab screens: a rightward swipe that starts near the left edge pulls the
+// drawer out. Claimed in the capture phase on move only, so taps and vertical
+// scrolls inside the screens are untouched, and nothing overlays the content.
+const EDGE = 72; // px from the left where a swipe may start
+export function DrawerGestureArea({ children }: { children: ReactNode }) {
   const pan = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, g) => g.dx > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+        // x0 is only filled in after grant, so derive where the finger started.
+        onMoveShouldSetPanResponderCapture: (_, g) => g.moveX - g.dx < EDGE && g.dx > 8 && g.dx > Math.abs(g.dy) * 1.2,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderMove: (_, g) => progress.setValue(Math.max(0, Math.min(1, g.dx / WIDTH))),
         onPanResponderRelease: (_, g) => {
-          if (g.dx > WIDTH * 0.35 || g.vx > 0.5) {
+          if (g.dx > WIDTH * 0.18 || g.vx > 0.25) {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             openDrawer();
             animateTo(1);
           } else animateTo(0);
@@ -162,5 +169,9 @@ export function DrawerEdge() {
       }),
     [],
   );
-  return <View {...pan.panHandlers} style={{ position: "absolute", left: 0, top: 110, bottom: 130, width: 18, zIndex: 20 }} />;
+  return (
+    <View style={{ flex: 1 }} {...pan.panHandlers}>
+      {children}
+    </View>
+  );
 }
