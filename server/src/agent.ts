@@ -129,7 +129,7 @@ const todoFields = {
   time: str("HH:MM 24 小时制；空字符串表示全天"),
   repeat: { type: "string", enum: [...REPEATS] },
   priority: { type: "string", enum: ["normal", "high"], description: "用户强调『一定』『很重要』『截止』才用 high" },
-  lead: { type: "integer", description: "有具体时刻时，提前多少分钟提醒（并在灵动岛显示倒计时）。按事情性质判断：电话、线上会议 5-10；线下会议、约人 15-30；需要出门或赶路的（机场、车站、医院）按路程 45-120；有截止时间的工作 60-180；吃药、小事 0。用户说了提前多久就按用户的。全天待办不填" },
+  lead: { type: "integer", description: "截止前多少分钟提前通知（有日期的待办都要给）。根据事情需要多少准备时间判断：电话、线上会议 5-10；线下见面 15-30；需要赶路的（机场、车站、医院）按路程 45-150；当天要交的工作 60-180；需要提前准备的截止事项（交报告、缴费、续费、考试）1-3 天即 1440-4320；买礼物、订票等要预留时间的 3-7 天；吃药、日常小事 0。用户说了提前多久就按用户的。全天待办以当天的提醒时间（<defaults> morning）为截止参照" },
 };
 
 const TOOL_DEFS = {
@@ -202,7 +202,7 @@ const TodoArgs = z.object({
   time: z.string().regex(/^(\d{2}:\d{2})?$/).optional(),
   repeat: z.enum(REPEATS).optional(),
   priority: z.enum(["normal", "high"]).optional(),
-  lead: z.number().int().min(0).max(1440).optional(),
+  lead: z.number().int().min(0).max(20160).optional(),
 });
 const Args = {
   read_entries: z.object({ ids: z.array(z.string()).max(6) }),
@@ -245,7 +245,7 @@ class Workspace {
       time: a.date ? (a.time ?? "") : "",
       repeat: a.date ? (a.repeat ?? "none") : "none",
       priority: a.priority ?? "normal",
-      lead: a.date && a.time ? (a.lead ?? 10) : 0,
+      lead: a.date ? (a.lead ?? (a.time ? 10 : 0)) : 0,
     };
     const options = (a.options ?? []).filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date));
     this.ops.push({ op: "todo.create", ref, todo, ...(a.question && options.length ? { ask: { question: a.question, options } } : {}) });
@@ -318,7 +318,7 @@ const CAPTURE_SYSTEM = `你是语音日记应用 Murmur 的大脑。用户在首
 - 修改已有待办用 <todos> 里的 id。说的事和已有待办是同一件，就修改它，不要新建重复的。
 - "改到、推迟、提前、换成" → update_todo；"做完了、搞定了" → complete_todo；"不用了、取消、删掉" → delete_todo。只有用户明确表示才删除。
 - 新建时 title 动词开头、写清对象，去掉"提醒我""记得"这类词。一件事一条。
-- 有具体时刻的待办都给出 lead（提前提醒的分钟数），根据事情需要多少准备或路程时间来定。
+- 有日期的待办都给出 lead（截止前提前通知的分钟数），根据事情需要多少准备或路程时间来定：有的要提前几天，有的不需要提前。
 
 ${TIME_RULES}
 

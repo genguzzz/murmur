@@ -14,9 +14,10 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
   const [note, setNote] = useState(todo.note ?? "");
   const [due, setDue] = useState<Due>({ date: todo.date ?? "", time: todo.time ?? "", repeat: todo.repeat });
   const [high, setHigh] = useState(todo.priority === "high");
-  const [lead, setLead] = useState(() => leadOf({ time: todo.time || "00:00", lead: todo.lead }));
+  const [lead, setLead] = useState(() => leadOf(todo));
   // The agent's choice stays in the list even if it isn't one of the presets.
-  const leadChoices = [...new Set([0, 5, 10, 15, 30, 60, 120, lead])].sort((a, b) => a - b);
+  const presets = due.time ? [0, 5, 10, 15, 30, 60, 120, 1440] : [0, 1440, 2880, 4320, 10080];
+  const leadChoices = [...new Set([...presets, lead])].sort((a, b) => a - b);
 
   const save = () => {
     const patch: Partial<Todo> = {
@@ -26,7 +27,7 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
       time: (due.date && due.time) || undefined,
       repeat: due.date ? due.repeat : "none",
       priority: high ? "high" : "normal",
-      ...(lead !== leadOf({ time: todo.time || "00:00", lead: todo.lead }) ? { lead } : {}),
+      ...(lead !== leadOf(todo) ? { lead } : {}),
     };
     const changed = (Object.keys(patch) as (keyof Todo)[]).some((k) => patch[k] !== todo[k]);
     if (changed) {
@@ -71,7 +72,7 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
             <DueEditor value={due} onChange={setDue} />
           </View>
 
-          {due.date && due.time ? (
+          {due.date ? (
             <View>
               <Label icon="notifications-outline" text={`提前提醒：${leadLabel(lead)}`} />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -81,7 +82,7 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
                   </Pressable>
                 ))}
               </ScrollView>
-              <Text style={{ fontSize: 12, color: colors.textFaint, marginTop: 8 }}>到时会先发一条提醒，并在灵动岛和锁屏显示倒计时。</Text>
+              <Text style={{ fontSize: 12, color: colors.textFaint, marginTop: 8 }}>{due.time ? "到期前先发一条通知，并在灵动岛和锁屏显示倒计时。" : "以当天的待办提醒时间为截止，提前发一条通知。"}</Text>
             </View>
           ) : null}
 

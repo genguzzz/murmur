@@ -19,7 +19,7 @@ export interface Todo {
   postponed?: number;
   source?: "voice" | "text";
   ask?: { question: string; options: DraftOption[] }; // the agent's open question about the time
-  lead?: number; // minutes of heads-up before a timed to-do (AI-chosen; undefined = 10, 0 = none)
+  lead?: number; // minutes of advance notice before the due moment (AI-chosen; 0 = none)
 }
 
 export interface DraftOption {
@@ -138,13 +138,16 @@ export function nextOccurrence(t: Todo, now = nowWall()): string {
   return d;
 }
 
-// Heads-up before a timed to-do, in minutes (the agent picks it; 10 if it didn't).
+// Advance notice before the due moment, in minutes. The agent picks it per to-do from
+// what the task needs; without one, timed to-dos get 10 minutes, all-day ones none.
+// The due moment is the time, or the all-day reminder time for date-only to-dos.
 export function leadOf(t: Pick<Todo, "time" | "lead">): number {
-  return t.time ? (t.lead ?? 10) : 0;
+  return t.lead ?? (t.time ? 10 : 0);
 }
 
 export function leadLabel(min: number): string {
   if (min <= 0) return "不提前";
+  if (min % 1440 === 0) return `${min / 1440} 天`;
   const h = Math.floor(min / 60);
   const m = min % 60;
   return h ? (m ? `${h} 小时 ${m} 分钟` : `${h} 小时`) : `${m} 分钟`;

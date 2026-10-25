@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { logger } from "./log";
 import { dueAt, leadLabel, leadOf, parseDate, sortTodos, today, type Todo } from "./todo";
-import { instantOf, nowWall, wall } from "./zone";
+import { instantOf, nowWall } from "./zone";
 
 const log = logger("notify");
 
@@ -167,12 +167,13 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
         interruptionLevel: "timeSensitive",
         data: { route: "/todos", todoId: t.id },
       };
-      // Heads-up before a timed to-do, as far ahead as the agent judged it needs.
+      // Advance notice, as far ahead of the due moment as the agent judged the task needs.
       const lead = leadOf(t);
       const leadContent: Notifications.NotificationContentInput = {
         ...content,
-        title: `${leadLabel(lead)}后：${t.title}`,
-        body: `${t.time} 到期${t.note ? ` · ${t.note}` : ""}`,
+        title: `${leadLabel(lead)}后到期：${t.title}`,
+        // Absolute date: "明天" worked out now would be wrong by the time it fires.
+        body: `${Number(t.date!.slice(5, 7))}月${Number(t.date!.slice(8, 10))}日${t.time ? ` ${t.time}` : ""} 到期${t.note ? ` · ${t.note}` : ""}`,
         data: { route: "/todos", todoId: t.id, lead: true },
       };
       const T = Notifications.SchedulableTriggerInputTypes;
@@ -196,16 +197,10 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
       else if (t.repeat === "monthly") triggers.push({ id: t.id, trigger: { type: T.MONTHLY, day: local.day, hour, minute } });
       else {
         const at = dueAt(t, allDayTime)!;
-        // An all-day to-do created today after its reminder time gets one nudge a minute
-        // after it was created. Anchored to createdAt (not "now") so rebuilding the
-        // schedule on every foreground can't fire it again.
-        if (at <= now && !t.time && t.date === today(now)) {
-          const nudge = wall(new Date(new Date(t.createdAt).getTime() + 60_000));
-          if (nudge > now && nudge.getHours() < 21) at.setTime(nudge.getTime());
-        }
-        if (at <= now) continue;
-        triggers.push({ id: t.id, trigger: { type: T.DATE, date: instantOf(at) } });
+        // Every time here is fixed by the to-do (due moment, minus its lead), so
+        // rebuilding on each foreground re-creates the same schedule; past ones are skipped.
         const early = new Date(at.getTime() - lead * 60_000);
+        if (at > now) triggers.push({ id: t.id, trigger: { type: T.DATE, date: instantOf(at) } });
         if (lead && early > now) triggers.push({ id: `${t.id}-lead`, lead: true, trigger: { type: T.DATE, date: instantOf(early) } });
       }
       for (const x of triggers) {

@@ -16,7 +16,8 @@ function upcoming(todos: Todo[]) {
     .filter((t) => !t.doneAt && t.date && t.time && leadOf(t) > 0)
     .map((t) => {
       const due = instantOf(parseDate(t.date!, t.time!)).getTime();
-      return { t, due, start: due - leadOf(t) * 60_000 };
+      // iOS ends a Live Activity after 8 hours, so longer leads show the countdown for the last 8.
+      return { t, due, start: due - Math.min(leadOf(t), 480) * 60_000 };
     })
     .filter((c) => now >= c.start && now < c.due + GRACE_MS)
     .sort((a, b) => a.due - b.due)[0];

@@ -648,7 +648,7 @@ function applyOps(ops: api.AgentOp[], source: Todo["source"]): Applied {
         ...(d.date && d.time ? { time: d.time } : {}),
         repeat: d.date ? d.repeat : "none",
         priority: d.priority,
-        ...(d.date && d.time && d.lead !== undefined ? { lead: d.lead } : {}),
+        ...(d.date && d.lead !== undefined ? { lead: d.lead } : {}),
         createdAt: at,
         source,
         ...(o.ask ? { ask: o.ask } : {}),
