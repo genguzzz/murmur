@@ -10,6 +10,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { analyzeEntry, client, RefusalError, type Analysis } from "./claude.ts";
 import { config } from "./config.ts";
+import { APP_GUIDE } from "./guide.ts";
 import { ASK_RULES, TIME_RULES } from "./todos.ts";
 
 type Msg = Anthropic.Beta.BetaMessageParam;
@@ -299,7 +300,7 @@ const CAPTURE_SYSTEM = `你是语音日记应用 Murmur 的大脑。用户在首
 ## 四种去向（finish.route）
 - journal：值得记下来的经历、感受、想法、复盘、对计划的思考。大多数日记式的话都是这个。话里顺带要你提醒或修改的事，照样用待办工具处理，route 仍是 journal。
 - todo：只是让你新建、修改、完成或删除待办（"提醒我…""把…改到周五""…做完了""…不用做了"），除此之外没有值得记进日记的内容。
-- chat：用户在问你问题、请你帮忙查、想、写，或想跟你聊（"你觉得…""帮我查一下…""我上周都说了什么""…怎么办"）。他要的是回答，不是记录。finish 之后会有对话助手接着回答，你不用回答，title 写对话标题。
+- chat：用户在问你问题、请你帮忙查、想、写，或想跟你聊（"你觉得…""帮我查一下…""我上周都说了什么""…怎么办""这个功能怎么用"）。他要的是回答，不是记录。finish 之后会有对话助手接着回答，你不用回答，title 写对话标题。
 - pending：拿不准——试录音（"喂喂""测试一下"）、只有零星几个字、听不清、明显没说完，或看不出想干什么。title 写卡片标题，pending_reason 用一句话说明为什么先放着。
 拿不准 journal 还是 todo 时选 journal；拿不准是不是 chat 时，看他是不是在等你回答。
 <hint>todo</hint>：用户是在待办页说的，倾向 todo。<hint>journal</hint>：用户在写日记或回答追问，倾向 journal。
@@ -328,12 +329,15 @@ const CHAT_SYSTEM = `你是 Murmur 里的助手，用户私人语音日记和待
 - 当普通助手回答问题。需要最新或事实性的信息时用 web_search，不要每个问题都查。
 - 管理待办：新建、修改（时间、标题、重复…）、完成、删除，用 <todos> 里的 id。用户明确要求才删除；指代不清时先问清楚再改。
 - 用户要你"记下来""存一条记录"时用 save_entry。
+- 用户问 Murmur 本身怎么用、某个功能在哪、会发生什么时，按 <app_guide> 回答。
 改完待办或存了记录后，用一句话告诉用户改了什么（应用会给他撤销按钮）。
 回答简洁自然，像朋友聊天；可以用短列表，不用标题。默认简体中文；用户说英文就用英文。
 
 ${TIME_RULES}
 
-${ASK_RULES}`;
+${ASK_RULES}
+
+${APP_GUIDE}`;
 
 // ---------- loop ----------
 
