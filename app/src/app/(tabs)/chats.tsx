@@ -71,6 +71,9 @@ function SwipeRow({ children, onOpen, onDelete }: { children: ReactNode; onOpen:
       friction={1.6}
       rightThreshold={44}
       overshootRight={false}
+      // Rows only have a right-side action, so a rightward drag isn't theirs: leave it
+      // to the drawer's edge swipe instead of claiming it after 10 px.
+      dragOffsetFromLeft={10000}
       // Opaque backing: the pressed card fades and shrinks a little, and the delete
       // button sitting behind it must not show through.
       childrenContainerStyle={{ backgroundColor: colors.bg, borderRadius: radius.md }}

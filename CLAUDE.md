@@ -20,7 +20,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - State lives in one JSON file via `lib/store.ts` (`setState` → debounced atomic save). Add fields with defaults in `DEFAULT_STATE`; `loadState` merges, so old files keep working.
 - Memo playback is `components/WaveformPlayer` (tap/drag the waveform to seek, speed pill, Live Activity + lock screen). Waveforms come from recorder metering saved on the entry; older memos learn theirs from `useAudioSampleListener` on first full play.
 - Logging: `logger("area")`; log ids, counts, timings, errors — never journal text or transcripts. Users debug via Settings → 上传日志; read it on the server at `/opt/voicememo/data/logs/<id>.log`.
-- Gestures inside scrollable or swipe-back screens use react-native-gesture-handler (`usePanGesture`/`useTapGesture` + `GestureDetector`, with the screen's `ScrollView` imported from gesture-handler), not `PanResponder`: JS responders are invisible to UIKit, so the page scrolls or swipes back during the drag. Don't patch it by toggling `gestureEnabled`.
+- Gestures inside scrollable or swipe-back screens (including the drawer edge swipe in `DrawerGestureArea`) use react-native-gesture-handler (`usePanGesture`/`useTapGesture` + `GestureDetector`, with the screen's `ScrollView` imported from gesture-handler), not `PanResponder`: JS responders are invisible to UIKit, so the page scrolls or swipes back during the drag. Don't patch it by toggling `gestureEnabled`.
 - Time: everything date-related runs in the app time zone (`lib/zone.ts`; Settings → 时区, default follows the phone, can pin e.g. Asia/Shanghai). Use `nowWall()`/`wall(iso)`/`today()` for logic and display, `instantOf(wall)` when handing a time to iOS (notification triggers, Calendar). Never `new Date()` for "what day/hour is it". `dayKey(iso)` converts; `dayKey(date)` assumes a wall date.
 - React compiler lint is on: no reading refs during render, no `Date.now()`/`new Date()` in render (keep `now` in state), no `setState` straight inside effects.
 
@@ -61,7 +61,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - Self-signed builds have no push entitlement: notifications are local only (`enableRemoteNotifications: false`).
 - Face ID `lockout` comes back instantly until the device passcode is entered; `authenticateBiometric` retries with the passcode fallback.
 - After a successful Face ID scan iOS keeps the app `inactive` for ~2 s; anything keyed on AppState (the privacy cover) must ignore that window (`isAuthenticating()`).
-- iOS 26 turns on full-screen back-swipe for native stacks; we set `fullScreenGestureEnabled: false` on the root Stack so only the left edge goes back. The drawer's own swipe zone is 36 px (`EDGE` in Drawer.tsx); the user found 18 too stingy and 72 too eager.
+- iOS 26 turns on full-screen back-swipe for native stacks; we set `fullScreenGestureEnabled: false` on the root Stack so only the left edge goes back. The drawer's own swipe zone is 36 px (`EDGE` in Drawer.tsx, an RNGH pan with an edge hitSlop; row swipeables must not claim directions they have no actions for, or they steal it); the user found 18 too stingy and 72 too eager.
 - Don't present an RN `Modal` while another is still dismissing (iOS drops it); wait ~450 ms.
 - Server-side Claude calls must go out through the residential proxy (`server/src/upstream.ts`, `LLM_PROXY`), with no direct fallback; Groq transcription goes direct. Check any new LLM call uses `upstreamFetch`.
 - No model identifiers in commit messages or PR text.

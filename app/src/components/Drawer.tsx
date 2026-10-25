@@ -1,5 +1,6 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import { Animated, Dimensions, Easing, PanResponder, Pressable, Text, View } from "react-native";
+import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -148,31 +149,28 @@ function DrawerRow({ icon, label, hint, onPress }: Item & { onPress: () => void 
 }
 
 // Wraps the tab screens: a rightward swipe that starts near the left edge pulls the
-// drawer out. Claimed in the capture phase on move only, so taps and vertical
-// scrolls inside the screens are untouched, and nothing overlays the content.
+// drawer out. A gesture-handler pan, so it negotiates natively with the scroll views
+// and row swipes inside the screens (a JS responder loses those races); it only
+// starts inside the edge strip and fails on vertical movement.
 const EDGE = 36; // px from the left where a swipe may start (72 felt too eager)
 export function DrawerGestureArea({ children }: { children: ReactNode }) {
-  const pan = useMemo(
-    () =>
-      PanResponder.create({
-        // x0 is only filled in after grant, so derive where the finger started.
-        onMoveShouldSetPanResponderCapture: (_, g) => g.moveX - g.dx < EDGE && g.dx > 10 && g.dx > Math.abs(g.dy) * 1.5,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderMove: (_, g) => progress.setValue(Math.max(0, Math.min(1, g.dx / WIDTH))),
-        onPanResponderRelease: (_, g) => {
-          if (g.dx > WIDTH * 0.25 || g.vx > 0.35) {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            openDrawer();
-            animateTo(1);
-          } else animateTo(0);
-        },
-        onPanResponderTerminate: () => animateTo(0),
-      }),
-    [],
-  );
+  const pan = usePanGesture({
+    runOnJS: true,
+    hitSlop: { left: 0, width: EDGE },
+    activeOffsetX: 10,
+    failOffsetY: [-15, 15],
+    onUpdate: (e) => progress.setValue(Math.max(0, Math.min(1, e.translationX / WIDTH))),
+    onDeactivate: (e) => {
+      if (!e.canceled && (e.translationX > WIDTH * 0.25 || e.velocityX > 350)) {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        openDrawer();
+        animateTo(1);
+      } else animateTo(0);
+    },
+  });
   return (
-    <View style={{ flex: 1 }} {...pan.panHandlers}>
-      {children}
-    </View>
+    <GestureDetector gesture={pan}>
+      <View style={{ flex: 1 }}>{children}</View>
+    </GestureDetector>
   );
 }
