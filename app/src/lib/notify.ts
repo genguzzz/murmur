@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { logger } from "./log";
 import { dueAt, leadLabel, leadOf, parseDate, sortTodos, today, type Todo } from "./todo";
-import { instantOf, nowWall } from "./zone";
+import { instantOf, nowWall, wall } from "./zone";
 
 const log = logger("notify");
 
@@ -196,8 +196,13 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
       else if (t.repeat === "monthly") triggers.push({ id: t.id, trigger: { type: T.MONTHLY, day: local.day, hour, minute } });
       else {
         const at = dueAt(t, allDayTime)!;
-        // An all-day to-do created after its reminder time still gets a nudge today.
-        if (at <= now && !t.time && t.date === today(now) && now.getHours() < 21) at.setTime(now.getTime() + 60_000);
+        // An all-day to-do created today after its reminder time gets one nudge a minute
+        // after it was created. Anchored to createdAt (not "now") so rebuilding the
+        // schedule on every foreground can't fire it again.
+        if (at <= now && !t.time && t.date === today(now)) {
+          const nudge = wall(new Date(new Date(t.createdAt).getTime() + 60_000));
+          if (nudge > now && nudge.getHours() < 21) at.setTime(nudge.getTime());
+        }
         if (at <= now) continue;
         triggers.push({ id: t.id, trigger: { type: T.DATE, date: instantOf(at) } });
         const early = new Date(at.getTime() - lead * 60_000);
