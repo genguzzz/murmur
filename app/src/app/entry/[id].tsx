@@ -215,7 +215,7 @@ export default function EntryScreen() {
         {entry.mood ? (
           <>
             <SectionTitle icon="heart-outline" title="情绪" right={<IconButton name="color-palette-outline" size={18} onPress={() => setLegend(true)} />} />
-            <Card onPress={() => router.push({ pathname: "/calendar", params: { day: dayKey(entry.createdAt) } })} style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Card onPress={() => router.push(`/day/${dayKey(entry.createdAt)}`)} style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
               <MoodStamp mood={entry.mood} size={50} />
               <View style={{ flex: 1 }}>
                 <Text style={[ui.title, { fontSize: 17 }]}>{entry.moodLabel ?? MOOD_LABELS[entry.mood]}</Text>
