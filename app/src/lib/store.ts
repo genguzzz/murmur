@@ -49,6 +49,7 @@ export interface Entry {
   mode?: "todo"; // recorded from the to-do tab: lean towards making tasks
   intentChecked?: boolean; // legacy (pre-agent): note-vs-todo detection already ran
   skipIntent?: boolean; // legacy: user said "this is a note"
+  updatedAt?: string; // last change, for sync merges (falls back to createdAt)
 }
 
 // Waiting on the user. "unclear": the agent couldn't tell what a memo was for (a test,
@@ -112,7 +113,18 @@ export interface Settings {
   analytics: boolean; // upload usage events (no content) to the server
   playbackRate: number; // last speed chosen in the player
   timeZone: string | null; // pinned IANA zone for dates/reminders; null = follow the phone
+  cloud?: CloudPrefs; // folder sync (lib/cloud.ts); never part of the synced data
   memberSince?: string;
+}
+
+export interface CloudPrefs {
+  bookmark: string; // native bookmark that re-opens the picked folder
+  name: string;
+  iCloud: boolean;
+  device: string; // this install, so merges know who wrote the remote copy
+  known: string[]; // ids present at the last sync: one missing locally now was deleted here
+  lastSyncAt?: string;
+  lastError?: string;
 }
 
 export interface InsightsCache {
@@ -288,7 +300,8 @@ export function updateSettings(patch: Partial<Settings>) {
 // ---------- entries ----------
 
 function patchEntry(id: string, patch: Partial<Entry>) {
-  setState((s) => ({ ...s, entries: s.entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+  const updatedAt = new Date().toISOString();
+  setState((s) => ({ ...s, entries: s.entries.map((e) => (e.id === id ? { ...e, ...patch, updatedAt } : e)) }));
 }
 
 export function getEntry(id: string): Entry | undefined {
@@ -803,7 +816,8 @@ export function restoreChat(chat: Chat) {
 }
 
 function patchChat(id: string, fn: (c: Chat) => Chat) {
-  setState((s) => ({ ...s, chats: s.chats.map((c) => (c.id === id ? fn(c) : c)) }));
+  const updatedAt = new Date().toISOString();
+  setState((s) => ({ ...s, chats: s.chats.map((c) => (c.id === id ? { ...fn(c), updatedAt } : c)) }));
 }
 
 // Streaming text arrives in tiny deltas; buffer and patch the reply ~12×/s.
@@ -902,11 +916,102 @@ export async function sendChat(chatId: string, content: string, opts: { voice?: 
   }
 }
 
+// ---------- sync snapshot ----------
+
+// What goes to the sync folder: the journal, without secrets or device-only settings.
+export interface SyncSnapshot {
+  format: 1;
+  at: string;
+  device: string;
+  entries: Entry[];
+  chats: Chat[];
+  todos: Todo[];
+  inbox: PendingIntent[];
+  insights?: InsightsCache;
+  profile: { name: string; memberSince?: string };
+  deleted: Record<string, string>; // id → when it was deleted, so other devices drop it too
+}
+
+export function buildSnapshot(device: string, deleted: Record<string, string>): SyncSnapshot {
+  return {
+    format: 1,
+    at: new Date().toISOString(),
+    device,
+    // In-flight entries and streaming replies are left for the next sync.
+    entries: state.entries.filter((e) => e.status === "done" || e.status === "failed"),
+    chats: state.chats.filter((c) => !c.messages.some((m) => m.pending)),
+    todos: state.todos,
+    inbox: state.inbox,
+    insights: state.insights,
+    profile: { name: state.settings.name, memberSince: state.settings.memberSince },
+    deleted,
+  };
+}
+
+export function allIds(): string[] {
+  return [...state.entries, ...state.chats, ...state.todos, ...state.inbox].map((x) => x.id);
+}
+
+const stamp = (x: { updatedAt?: string; createdAt: string }) => x.updatedAt ?? x.createdAt;
+
+// Folds the remote copy into local state. Newer edits win; an id deleted on either side
+// stays deleted (remote via `deleted`, local via `known` = ids we had at the last sync).
+// Returns counts and the tombstones to write back.
+export function mergeSnapshot(remote: SyncSnapshot, known: Set<string>): { added: number; updated: number; removed: number; deleted: Record<string, string> } {
+  const deleted = { ...remote.deleted };
+  const now = new Date().toISOString();
+  let added = 0;
+  let updated = 0;
+  let removed = 0;
+  const merge = <T extends { id: string; createdAt: string; updatedAt?: string }>(local: T[], theirs: T[]): T[] => {
+    const remoteById = new Map(theirs.map((x) => [x.id, x]));
+    const out: T[] = [];
+    for (const x of local) {
+      const gone = deleted[x.id];
+      if (gone && gone > stamp(x)) {
+        removed += 1;
+        continue;
+      }
+      const r = remoteById.get(x.id);
+      if (r && stamp(r) > stamp(x)) {
+        out.push(r);
+        updated += 1;
+      } else out.push(x);
+    }
+    const localIds = new Set(local.map((x) => x.id));
+    for (const r of theirs) {
+      if (localIds.has(r.id) || deleted[r.id]) continue;
+      if (known.has(r.id)) {
+        deleted[r.id] = now; // we had it at the last sync and deleted it since
+        continue;
+      }
+      out.push(r);
+      added += 1;
+    }
+    return out;
+  };
+  const busy = state.entries.filter((e) => e.status === "transcribing" || e.status === "analyzing");
+  setState((s) => ({
+    ...s,
+    entries: [...merge(s.entries.filter((e) => !busy.includes(e)), remote.entries), ...busy],
+    chats: merge(s.chats, remote.chats),
+    todos: merge(s.todos, remote.todos),
+    inbox: merge(s.inbox, remote.inbox),
+    insights: !s.insights || (remote.insights && remote.insights.at > s.insights.at) ? remote.insights : s.insights,
+    settings: { ...s.settings, name: s.settings.name || remote.profile.name, memberSince: [s.settings.memberSince, remote.profile.memberSince].filter(Boolean).sort()[0] },
+  }));
+  if (added || updated || removed) {
+    syncTodoReminders(state.todos, state.settings.todoAllDayTime);
+    log.info("sync merged", { added, updated, removed });
+  }
+  return { added, updated, removed, deleted };
+}
+
 // ---------- export / wipe ----------
 
 export function exportJson(): string {
   const { settings, ...rest } = state;
-  return JSON.stringify({ exportedAt: new Date().toISOString(), ...rest, settings: { ...settings, token: undefined } }, null, 2);
+  return JSON.stringify({ exportedAt: new Date().toISOString(), ...rest, settings: { ...settings, token: undefined, cloud: undefined } }, null, 2);
 }
 
 export function wipeAll() {
@@ -918,7 +1023,8 @@ export function wipeAll() {
       log.warn("audio wipe failed", e);
     }
   }
-  setState((s) => ({ ...DEFAULT_STATE, settings: s.settings }));
+  // Sync is switched off first so the folder keeps its copy instead of mirroring the wipe.
+  setState((s) => ({ ...DEFAULT_STATE, settings: { ...s.settings, cloud: undefined } }));
   log.warn("all data wiped");
 }
 
@@ -946,7 +1052,12 @@ export function openTodos(): Todo[] {
 }
 
 function setTodos(fn: (todos: Todo[]) => Todo[]) {
-  setState((s) => ({ ...s, todos: fn(s.todos) }));
+  // Stamp every to-do this change touched, so sync can tell the newer copy.
+  const updatedAt = new Date().toISOString();
+  setState((s) => {
+    const prev = new Map(s.todos.map((t) => [t.id, t]));
+    return { ...s, todos: fn(s.todos).map((t) => (prev.get(t.id) === t ? t : { ...t, updatedAt })) };
+  });
   syncTodoReminders(state.todos, state.settings.todoAllDayTime);
 }
 

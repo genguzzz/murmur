@@ -16,7 +16,8 @@ import { collectLogs, logger, recentLines, sessionId } from "@/lib/log";
 import { cancelRemember, ensurePermission, permissionState, syncCheckins, type CheckinPrefs, type PermissionState } from "@/lib/notify";
 import { debugSummary, exportJson, getState, resyncTodoReminders, updateSettings, useStore, wipeAll } from "@/lib/store";
 import { checkAndFetch, restartToApply, runningLabel, updatesEnabled } from "@/lib/updates";
-import { dayKey } from "@/lib/format";
+import { cloudAvailable, connectFolder, disconnectFolder, syncNow, useCloudStatus } from "@/lib/cloud";
+import { dayKey, timeAgo } from "@/lib/format";
 import { appZone, deviceZone, offsetLabel, wall, zoneOffset } from "@/lib/zone";
 import { colors, radius } from "@/lib/theme";
 
@@ -319,8 +320,10 @@ export default function Settings() {
           <NavRow icon="hardware-chip-outline" title="能力自检" subtitle="测试相机、相册、定位、日历等系统功能" onPress={() => router.push("/diagnostics")} />
         </Section>
 
+        <CloudSection />
+
         <Section icon="folder-open" title="数据与隐私">
-          <Text style={[ui.faint, { lineHeight: 18, marginBottom: 6 }]}>录音和记录只保存在这台设备上。发送到服务器转写和整理的内容，处理完成后即丢弃，不会留存。</Text>
+          <Text style={[ui.faint, { lineHeight: 18, marginBottom: 6 }]}>{settings.cloud ? `录音和记录保存在这台设备上，并同步到你选择的文件夹「${settings.cloud.name}」。` : "录音和记录只保存在这台设备上。"}发送到服务器转写和整理的内容，处理完成后即丢弃，不会留存。</Text>
           <NavRow icon="download-outline" title="导出全部数据" subtitle="JSON 格式，包含记录和对话（不含录音）" onPress={() => void doExport()} />
           <NavRow icon="trash-outline" title="清空所有数据" subtitle="删除记录、录音和对话" onPress={wipe} danger />
         </Section>
@@ -432,6 +435,73 @@ export default function Settings() {
         />
       </Sheet>
     </Screen>
+  );
+}
+
+// iCloud Drive folder sync (lib/cloud.ts). Needs the MurmurCloud module (runtime 5+).
+function CloudSection() {
+  const cloud = useStore((s) => s.settings.cloud);
+  const status = useCloudStatus();
+  const [busy, setBusy] = useState(false);
+
+  if (!cloudAvailable()) {
+    return (
+      <Section icon="cloud" title="iCloud 同步">
+        <Text style={ui.body}>需要安装 0.9.0 或更高版本的安装包才能使用 iCloud 同步。</Text>
+      </Section>
+    );
+  }
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const info = await connectFolder();
+      if (!info) return;
+      if (!info.iCloud) Alert.alert("这个文件夹不在 iCloud 云盘中", "数据会同步到这个文件夹，但不会上传到 iCloud，也无法在其他设备上使用。建议选择「iCloud 云盘」中的文件夹。");
+      if (info.remote && !info.remote.fromThisDevice) {
+        toast("发现已有数据", `${info.remote.entries} 条记录、${info.remote.todos} 项待办，将与本机数据合并`);
+      }
+      await syncNow("connect");
+      toast("已开启同步", `同步到「${info.name}」`);
+    } catch (e) {
+      Alert.alert("未能连接文件夹", e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stop = () =>
+    Alert.alert("停止同步？", "文件夹中已同步的数据会保留，本机数据不受影响。", [
+      { text: "取消", style: "cancel" },
+      { text: "停止同步", style: "destructive", onPress: () => void disconnectFolder() },
+    ]);
+
+  if (!cloud) {
+    return (
+      <Section icon="cloud" title="iCloud 同步">
+        <Text style={[ui.body, { marginBottom: 6 }]}>在「iCloud 云盘」中选择一个文件夹，Murmur 会把记录、待办、对话和录音自动同步到其中。在其他设备上选择同一个文件夹，即可获得相同的数据。数据存放在你自己的 iCloud 账号中。</Text>
+        <PillButton label="选择 iCloud 云盘文件夹" icon="folder-open-outline" onPress={() => void connect()} loading={busy} style={{ marginTop: 8, height: 46 }} />
+      </Section>
+    );
+  }
+
+  const line =
+    status.phase === "syncing"
+      ? status.detail ?? "正在同步…"
+      : status.phase === "error" || cloud.lastError
+        ? `同步失败：${status.detail ?? cloud.lastError}`
+        : cloud.lastSyncAt
+          ? `上次同步：${timeAgo(cloud.lastSyncAt)}`
+          : "尚未同步";
+  return (
+    <Section icon="cloud" title="iCloud 同步">
+      <NavRow icon={cloud.iCloud ? "cloud-done-outline" : "folder-outline"} title={`「${cloud.name}」`} subtitle={`${cloud.iCloud ? "iCloud 云盘" : "本机文件夹"} · ${line}`} onPress={() => void syncNow("manual")} />
+      <Text style={[ui.faint, { lineHeight: 18, marginTop: 2 }]}>修改后自动同步，打开和离开 App 时也会同步。轻点上方可立即同步。</Text>
+      <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+        <PillButton label="更换文件夹" variant="ghost" onPress={() => void connect()} loading={busy} style={{ flex: 1, height: 44 }} />
+        <PillButton label="停止同步" variant="ghost" onPress={stop} style={{ flex: 1, height: 44 }} />
+      </View>
+    </Section>
   );
 }
 

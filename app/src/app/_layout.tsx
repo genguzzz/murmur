@@ -6,6 +6,7 @@ import * as Device from "expo-device";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NoticeBridge, RunPill } from "@/components/Activity";
+import { CloudSync } from "@/components/CloudSync";
 import { DrawerHost } from "@/components/Drawer";
 import { TodoLiveSync } from "@/components/TodoLive";
 import { LockScreen } from "@/components/LockScreen";
@@ -114,6 +115,7 @@ export default function RootLayout() {
         {loaded ? <DrawerHost /> : null}
         {loaded ? <NoticeBridge /> : null}
         {loaded ? <TodoLiveSync /> : null}
+        {loaded ? <CloudSync /> : null}
         {loaded ? <RunPill /> : null}
         {loaded ? <ToastHost /> : null}
         {loaded ? <PermissionHost /> : null}

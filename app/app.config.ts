@@ -12,8 +12,9 @@ const build = process.env.BUILD_NUMBER ?? "0";
 // 4: capability pack (camera, photos, location, calendar, contacts, speech, background
 //    task, sqlite, reanimated/gesture-handler, …) so new features can ship over the air,
 //    plus the Live Activity extension (targets/live) and its bridge (modules/murmur-live).
+// 5: folder sync bridge (modules/murmur-cloud) for iCloud Drive sync; todo Live Activity icon.
 // 3: expo-blur, datetimepicker. 2: expo-notifications, automatic light/dark.
-export const RUNTIME_VERSION = "4";
+export const RUNTIME_VERSION = "5";
 
 const config: ExpoConfig = {
   name: "Murmur",

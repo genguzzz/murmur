@@ -59,6 +59,7 @@ const MODULES = {
   haptics: "ExpoHaptics",
   systemUI: "ExpoSystemUI",
   live: "MurmurLive",
+  cloud: "MurmurCloud",
 } as const;
 
 export type Capability = keyof typeof MODULES;

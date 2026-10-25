@@ -24,7 +24,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - Time: everything date-related runs in the app time zone (`lib/zone.ts`; Settings → 时区, default follows the phone, can pin e.g. Asia/Shanghai). Use `nowWall()`/`wall(iso)`/`today()` for logic and display, `instantOf(wall)` when handing a time to iOS (notification triggers, Calendar). Never `new Date()` for "what day/hour is it". `dayKey(iso)` converts; `dayKey(date)` assumes a wall date.
 - React compiler lint is on: no reading refs during render, no `Date.now()`/`new Date()` in render (keep `now` in state), no `setState` straight inside effects.
 
-## Native capabilities (runtime 4)
+## Native capabilities (runtime 4+)
 
 - The binary already ships camera, photo picker/library, image compression, location + geofences, Calendar/Reminders, contacts, document picker, TTS + live speech recognition, background refresh, SQLite/KV, network, localization, keep-awake, in-app browser, quick actions, SF Symbols, glass effect, reanimated + gesture-handler. Features built on these ship by OTA.
 - Feature code calls `src/lib/device` (never `expo-*` directly): wrappers ask permission through `ensureAccess`/`needAccess` (in-app explainer → system prompt → Settings when denied), return `null` on cancel, throw `DeviceError` (`denied`/`unavailable`/`failed`), and log + track every call.
@@ -33,6 +33,12 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - Headless code (geofence/background tasks) reads `kv` (SQLite), not the journal store; tasks are defined at module load in `lib/device/*`.
 - Settings → 调试 → 能力自检 exercises every wrapper on the device.
 - Live Activity (Dynamic Island) while recording/playing: SwiftUI layout in `app/targets/live` (widget extension via `@bacons/apple-targets`), bridge in `app/modules/murmur-live`, JS in `lib/device/live.ts`. State goes through ActivityKit only — no App Group, no entitlements, so 全能签 re-signing keeps working (that's why not `expo-widgets`, which stores layouts in an App Group). `MurmurActivityAttributes.swift` exists in both places and must stay identical. Never give a target (`targets/*`) the same name as a native module pod — Swift module names collide (`MurmurLive` vs `MurmurLiveWidget` broke 0.7.0). Layout changes need an IPA; text/state changes don't.
+
+## iCloud sync (runtime 5)
+
+- Real iCloud (CloudKit / ubiquity containers) needs an entitlement the 全能签-bought certificate can't carry, so sync goes through a folder the user picks in Files — normally in iCloud Drive, which iCloud then carries to their other devices. `modules/murmur-cloud` keeps a security-scoped bookmark and does coordinated reads/writes (which also download iCloud items); no entitlements.
+- `lib/cloud.ts`: `Murmur/journal.json` (`SyncSnapshot`: entries, chats, to-dos, inbox, insights, deletions) plus `Murmur/audio/<file>`. Each sync reads the remote snapshot, `mergeSnapshot` (newer `updatedAt` wins; ids in `deleted` or missing locally but in `settings.cloud.known` stay deleted), writes back, then copies missing audio both ways and removes orphans. `components/CloudSync.tsx` triggers it 15 s after changes, on foreground and on background.
+- Keep `updatedAt` stamping in `patchEntry`/`patchChat`/`setTodos`; any new way of changing those collections must go through them or sync will lose edits. Never put the token, lock settings or `settings.cloud` in the snapshot. In-flight entries and streaming chats are left out until they settle.
 
 ## Usage events (埋点)
 
