@@ -51,7 +51,7 @@ export default function Chats() {
                     <Text style={[ui.title, { flex: 1 }]} numberOfLines={1}>{item.title}</Text>
                     <Text style={ui.faint}>{timeAgo(item.updatedAt)}</Text>
                   </View>
-                  {last ? <Text style={[ui.body, { marginTop: 4 }]} numberOfLines={2}>{last.content}</Text> : null}
+                  {last ? <Text style={[ui.body, { marginTop: 4 }]} numberOfLines={2}>{preview(last.content)}</Text> : null}
                 </Card>
               </SwipeRow>
             );
@@ -71,6 +71,9 @@ function SwipeRow({ children, onOpen, onDelete }: { children: ReactNode; onOpen:
       friction={1.6}
       rightThreshold={44}
       overshootRight={false}
+      // Opaque backing: the pressed card fades and shrinks a little, and the delete
+      // button sitting behind it must not show through.
+      childrenContainerStyle={{ backgroundColor: colors.bg, borderRadius: radius.md }}
       onSwipeableWillOpen={() => {
         void Haptics.selectionAsync();
         if (row.current) onOpen(row.current);
@@ -89,4 +92,9 @@ function SwipeRow({ children, onOpen, onDelete }: { children: ReactNode; onOpen:
       {children}
     </Swipeable>
   );
+}
+
+// List preview: the reply's markdown marks and line breaks don't belong in two lines.
+function preview(text: string): string {
+  return text.replace(/\*\*/g, "").replace(/^\s*(#{1,4}|[-•*]|\d+[.、)])\s+/gm, "").replace(/\s*\n+\s*/g, " ").trim();
 }
