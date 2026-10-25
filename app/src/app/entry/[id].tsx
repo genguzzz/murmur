@@ -155,10 +155,10 @@ export default function EntryScreen() {
               {thread.map((t, i) => {
                 const here = t.id === entry.id;
                 return (
-                  <Pressable key={t.id} disabled={here} onPress={() => { tap(); router.replace(`/entry/${t.id}`); }} style={({ pressed }) => ({ flexDirection: "row", gap: 12, opacity: pressed ? 0.7 : 1 })}>
+                  <Pressable key={t.id} disabled={here} onPress={() => { tap(); router.push(`/entry/${t.id}`); }} style={({ pressed }) => ({ flexDirection: "row", gap: 12, opacity: pressed ? 0.7 : 1 })}>
                     <View style={{ width: 3, borderRadius: 2, backgroundColor: here ? colors.primary : colors.border }} />
                     <View style={{ flex: 1, paddingVertical: 8 }}>
-                      <Text style={ui.faint}>{i === 0 ? "最初" : "补充"} · {shortDate(t.createdAt)}{here ? " · 你在这里" : ""}</Text>
+                      <Text style={ui.faint}>{i === 0 ? "最初" : "后续"} · {shortDate(t.createdAt)}{here ? " · 你在这里" : ""}</Text>
                       <Text style={{ fontSize: 16, color: colors.text, marginTop: 3, fontWeight: here ? "700" : "400" }} numberOfLines={1}>{t.title ?? "整理中…"}</Text>
                     </View>
                     {here ? null : <Ionicons name="chevron-forward" size={15} color={colors.textFaint} style={{ alignSelf: "center" }} />}
@@ -244,7 +244,7 @@ export default function EntryScreen() {
           </SpeechBubble>
         </View>
       ) : null}
-      <BottomBar label="补充这条" onWrite={() => router.push({ pathname: "/write", params: { threadOf: root, ...followUpParams } })} onRecord={talkMore} onChat={() => router.push("/chats")} />
+      <BottomBar label="接着记一条" onWrite={() => router.push({ pathname: "/write", params: { threadOf: root, ...followUpParams } })} onRecord={talkMore} onChat={() => router.push("/chats")} />
 
       <Sheet visible={menu} onClose={() => setMenu(false)} button={null}>
         <View style={{ gap: 10 }}>

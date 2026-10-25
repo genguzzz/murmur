@@ -18,7 +18,7 @@ export default function Write() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <TopBar title={params.threadOf ? "补充这条记录" : "写下一个想法"} />
+      <TopBar title={params.threadOf ? "接着记一条" : "写下一个想法"} />
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
           <Mascot size={44} />
