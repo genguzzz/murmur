@@ -105,11 +105,11 @@ export function DrawerHost() {
 
         {inbox.length ? (
           <Pressable
-            onPress={() => go(`/confirm/${inbox[0].id}`)}
+            onPress={() => go("/pending")}
             style={({ pressed }) => ({ marginTop: 22, flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: radius.md, backgroundColor: colors.primarySoft, opacity: pressed ? 0.8 : 1 })}
           >
             <Ionicons name="mail-unread-outline" size={20} color={colors.primary} />
-            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>{inbox.length} 条语音里的待办等你确认</Text>
+            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>{inbox.length} 条录音等你确认</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.primary} />
           </Pressable>
         ) : null}

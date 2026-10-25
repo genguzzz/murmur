@@ -39,12 +39,19 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - `track(name, props)` from `lib/track.ts`; batched to `/v1/events` every 30 s and on background; stored at `/opt/voicememo/data/events/YYYY-MM-DD.jsonl`. Summary: `curl -H "authorization: Bearer $ADMIN_TOKEN" https://voice.gugenzzz.top/admin/events?day=YYYY-MM-DD[&name=x]`.
 - Props are counts, durations, enums and error codes only — never titles, text, transcripts, names or places. `timed(name, fn)` records ok/ms/code; `device.*` events come from the wrappers. Users can turn it off in Settings.
 
-## To-dos and the model
+## The agent (to-dos, routing, chat)
 
-- Every memo goes through `/v1/intent` after transcription (`routeIntent` in the store): `note` → journal; `todo` → removed from the journal into `inbox` and confirmed on `/confirm/[id]`; `mixed` → both. Intent failures fall back to a note, except in to-do mode, where they surface as a retryable error.
-- The model asks follow-ups through `question` + `options` on each draft; the confirm screen always adds 不设时间 and 自己选. Keep it to one question per task.
-- Reminders are local notifications rebuilt from scratch by `syncTodoReminders` after any change (iOS caps pending notifications at 64; we schedule ≤40). Call `ensureReminderPermission()` (in-app explainer, then the system prompt, or a route to Settings if denied) before relying on a reminder.
-- Prompts live next to their schemas in `server/src/claude.ts` / `todos.ts`: Chinese system prompt, JSON-schema output with field descriptions, `effort: "low"` for interactive calls. Validate any index the model returns against what you sent.
+- `/v1/agent` (`server/src/agent.ts`) is one tool loop behind two modes, streamed back as NDJSON (`step` / `route` / `text` / `done` / `error` lines):
+  - `capture`: every new memo after transcription (`processEntry` → `captureEntry` in the store). The model picks a route: `journal` (an entry, with any to-do changes on the side), `todo` (only to-do changes; the memo doesn't stay in the journal), `chat` (a question: opens a conversation and streams the answer there) or `pending` (a test or fragment: parked in 待确认 `/pending` with a title and reason). It can also mark the memo as a continuation of an earlier entry (`continues` → `threadId`).
+  - `chat`: one conversation turn. It can read and search the journal, search the web, change to-dos and save notes.
+- The phone owns the data. The request carries to-dos and the journal; tool calls edit a server-side copy and come back as `ops`. The app applies them together at the end (`applyOps`), with one undo (`lib/runs.ts` `registerUndo`), offered in the toast and the chat ops card. Never apply an op before `done`.
+- Live progress: `lib/runs.ts` holds each run's steps, shown on `/processing`, in the pill above the tab bar (`components/Activity.tsx`), on the entry card and in the chat bubble. The store raises `notify()` notices and the root layout turns them into toasts; the store itself never navigates.
+- Threads: `Entry.threadId` points at the first entry. 补充这条 (entry page) and follow-up answers record into the thread, and the entry page shows 这件事的来龙去脉.
+- Entries already routed (`routed`, or legacy `intentChecked`/`skipIntent`) and re-runs only get `/v1/analyze`, so a retry never re-applies to-do changes. `/v1/intent` and `/confirm/[id]` remain only for old builds and legacy inbox items.
+- When the agent can't tell a time, `create_todo` carries `ask` (question + options). The to-do row shows it as chips, plus 不设时间; any date/time edit clears it.
+- Prompts live next to their schemas: `server/src/agent.ts`, `claude.ts` and `todos.ts` (`TIME_RULES`/`ASK_RULES` are shared). They are Chinese system prompts with field descriptions; interactive calls use low effort. Validate every id or index the model returns against what you sent.
+- Reminders are local notifications rebuilt from scratch by `syncTodoReminders` after any change. iOS caps pending notifications at 64; we schedule ≤40. Notices with `remind` trigger `ensureReminderPermission()`.
+- Insights (`/insights`) refresh by themselves when stale (`insightsSignature`), on opening and in the background after new entries.
 
 ## Traps already hit
 

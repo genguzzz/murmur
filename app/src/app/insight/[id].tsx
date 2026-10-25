@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -7,7 +7,7 @@ import { Mascot } from "@/components/Mascot";
 import { Card, EmptyState, PillButton, Screen, SpeechBubble, TopBar, styles as ui, tap } from "@/components/ui";
 import { describeError } from "@/lib/api";
 import { logger } from "@/lib/log";
-import { refreshInsights, useStore } from "@/lib/store";
+import { insightsStale, refreshInsights, useInsightsRefreshing, useStore } from "@/lib/store";
 import { colors, fonts } from "@/lib/theme";
 
 const log = logger("insight");
@@ -19,22 +19,23 @@ export default function InsightScreen() {
   const router = useRouter();
   const entry = useStore((s) => s.entries.find((e) => e.id === id));
   const cache = useStore((s) => s.insights);
-  const [loading, setLoading] = useState(false);
+  const hasToken = useStore((s) => !!s.settings.token);
+  const loading = useInsightsRefreshing();
   const [error, setError] = useState<string | null>(null);
+
+  // The pattern cards below come from the cross-entry analysis; keep it current.
+  useEffect(() => {
+    if (hasToken && cache && insightsStale()) refreshInsights().catch((e) => log.warn("refresh failed", e));
+  }, [hasToken, cache]);
 
   if (!entry) return (<Screen><TopBar title="你的洞察" /><EmptyState text="这条记录不见了" /></Screen>);
 
-  const analyzeAll = async () => {
-    setLoading(true);
+  const analyzeAll = () => {
     setError(null);
-    try {
-      await refreshInsights();
-    } catch (e) {
+    refreshInsights().catch((e) => {
       log.error("refresh failed", e);
       setError(describeError(e));
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const pattern = cache?.data.patterns[0];
@@ -93,9 +94,9 @@ export default function InsightScreen() {
 
         <PatternCard icon="repeat" tint="#8E7CC3" title="一个模式正在形成" empty="发现你没注意到的规律，比如周一的你其实是什么状态" item={pattern ? { head: pattern.title, body: pattern.detail } : undefined} onPress={() => router.push("/insights")} />
         <PatternCard icon="people" tint="#8E7CC3" title="你常想到的人" empty="看看你最常提到谁，以及提到他们时的情绪" item={person ? { head: person.name, body: person.detail } : undefined} onPress={() => router.push("/insights")} />
-        <PatternCard icon="alert-circle" tint="#D86A73" title="反复出现的事" empty="看看哪些担忧反复出现、出现得有多频繁" item={recurring ? { head: `${recurring.title} · ${recurring.count} 次`, body: recurring.detail } : undefined} onPress={() => router.push("/insights")} />
+        <PatternCard icon="alert-circle" tint="#D86A73" title="反复出现的担忧" empty="看看哪些担忧反复出现、出现得有多频繁" item={recurring ? { head: `${recurring.title} · ${recurring.count} 次`, body: recurring.detail } : undefined} onPress={() => router.push("/insights")} />
 
-        {!cache ? <PillButton label="分析全部记录" icon="sparkles" onPress={() => void analyzeAll()} loading={loading} style={{ marginTop: 8 }} /> : null}
+        {!cache ? <PillButton label="分析全部记录" icon="sparkles" onPress={analyzeAll} loading={loading} style={{ marginTop: 8 }} /> : null}
         {error ? <Text style={{ color: colors.danger, marginTop: 12, textAlign: "center" }}>{error}</Text> : null}
       </ScrollView>
     </Screen>

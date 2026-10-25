@@ -9,8 +9,9 @@ import { TodoSheet } from "@/components/TodoSheet";
 import { Screen, SpeechBubble, TAB_BAR_SPACE, TabHeader, styles as ui, tap, toast } from "@/components/ui";
 import { describeError } from "@/lib/api";
 import { logger } from "@/lib/log";
-import { addTodos, clearDoneTodos, completeTodo, deleteTodo, quickAddTodo, reopenTodo, useStore } from "@/lib/store";
-import { dayLabel, groupTodos, type Todo } from "@/lib/todo";
+import { addTodos, clearDoneTodos, completeTodo, quickAddTodo, reopenTodo, updateTodo, useStore } from "@/lib/store";
+import { runUndo } from "@/lib/runs";
+import { dayLabel, dueLabel, groupTodos, type DraftOption, type Todo } from "@/lib/todo";
 import { colors, radius, shadow } from "@/lib/theme";
 import { nowWall } from "@/lib/zone";
 
@@ -55,12 +56,8 @@ export default function Todos() {
     try {
       const r = await quickAddTodo(text);
       setDraft("");
-      if ("pendingId" in r) {
-        router.push(`/confirm/${r.pendingId}`);
-        return;
-      }
-      toast(r.reply || "加好了", undefined, { label: "撤销", onPress: () => r.created.forEach((t) => deleteTodo(t.id)) });
-      if (r.created.some((t) => t.date)) void ensureReminderPermission();
+      toast(r.reply, r.lines.length > 1 ? r.lines.join("\n") : undefined, r.undoId ? { label: "撤销", onPress: () => { if (runUndo(r.undoId!)) toast("已撤销"); } } : undefined);
+      if (r.remind) void ensureReminderPermission();
     } catch (e) {
       // Offline: still capture it, without a date.
       log.warn("quick add parse failed", e);
@@ -72,6 +69,16 @@ export default function Todos() {
     }
   };
 
+  const answer = (t: Todo, o: DraftOption | null) => {
+    if (!o) {
+      updateTodo(t.id, { ask: undefined });
+      return;
+    }
+    updateTodo(t.id, { date: o.date, ...(o.time ? { time: o.time } : { time: undefined }), ask: undefined });
+    toast("定好了", `${t.title} · ${dueLabel({ date: o.date, time: o.time || undefined })}`);
+    void ensureReminderPermission();
+  };
+
   const summary = openCount === 0 ? "没有待办，轻松一下" : todayCount ? `今天 ${todayCount} 件${overdue ? `，其中 ${overdue} 件已逾期` : ""}` : `共 ${openCount} 件，今天没有要做的`;
 
   return (
@@ -81,7 +88,7 @@ export default function Todos() {
         <View style={{ paddingHorizontal: 18 }}>
           <Text style={[ui.body, { marginTop: 2 }]}>{summary}</Text>
 
-          {inbox.map((p) => (
+          {inbox.filter((p) => p.kind !== "unclear").map((p) => (
             <Pressable
               key={p.id}
               onPress={() => { tap(); router.push(`/confirm/${p.id}`); }}
@@ -152,7 +159,7 @@ export default function Todos() {
               </View>
               <List>
                 {s.todos.map((t) => (
-                  <TodoRow key={t.id} todo={t} now={now} highlight={focus === t.id} onToggle={() => toggle(t)} onPress={() => setEditing(t)} />
+                  <TodoRow key={t.id} todo={t} now={now} highlight={focus === t.id} onToggle={() => toggle(t)} onPress={() => setEditing(t)} onAnswer={(o) => answer(t, o)} />
                 ))}
               </List>
             </View>
@@ -168,7 +175,7 @@ export default function Todos() {
               </View>
               <List>
                 {done.map((t) => (
-                  <TodoRow key={t.id} todo={t} now={now} onToggle={() => toggle(t)} onPress={() => setEditing(t)} />
+                  <TodoRow key={t.id} todo={t} now={now} onToggle={() => toggle(t)} onPress={() => setEditing(t)} onAnswer={(o) => answer(t, o)} />
                 ))}
               </List>
             </View>

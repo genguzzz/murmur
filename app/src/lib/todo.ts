@@ -18,6 +18,7 @@ export interface Todo {
   lastDoneAt?: string; // repeating to-dos stay open; this records the latest completion
   postponed?: number;
   source?: "voice" | "text";
+  ask?: { question: string; options: DraftOption[] }; // the agent's open question about the time
 }
 
 export interface DraftOption {

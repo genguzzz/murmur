@@ -205,6 +205,175 @@ export function brief(body: BriefRequest) {
   return request<Brief>("/v1/brief", { method: "POST", json: body, timeoutMs: 60_000, tag: "brief" });
 }
 
+// ---------- agent (streamed) ----------
+
+export type AgentRoute = "journal" | "todo" | "chat" | "pending";
+export type AgentRepeat = "none" | "daily" | "weekdays" | "weekly" | "monthly";
+
+export interface AgentTodoFields {
+  title: string;
+  note: string;
+  date: string;
+  time: string;
+  repeat: AgentRepeat;
+  priority: "normal" | "high";
+}
+
+export type AgentOp =
+  | { op: "todo.create"; ref: string; todo: AgentTodoFields; ask?: { question: string; options: { label: string; date: string; time: string }[] } }
+  | { op: "todo.update"; id: string; patch: Partial<AgentTodoFields> }
+  | { op: "todo.complete"; id: string }
+  | { op: "todo.reopen"; id: string }
+  | { op: "todo.delete"; id: string }
+  | { op: "entry.create"; text: string };
+
+export interface AgentResult {
+  route?: AgentRoute;
+  continues?: string;
+  title?: string;
+  pending?: { title: string; reason: string };
+  reply: string;
+  ops: AgentOp[];
+  analysis?: Analysis;
+}
+
+export type AgentEvent =
+  | { t: "step"; id: string; label: string; state: "run" | "done" | "fail" }
+  | { t: "route"; route: AgentRoute; continues: string; title: string }
+  | { t: "text"; delta: string }
+  | { t: "done"; result: AgentResult }
+  | { t: "error"; code: string; message: string };
+
+export interface AgentRequest {
+  mode: "capture" | "chat";
+  now: string;
+  tz: string;
+  name?: string;
+  defaults: { morning: string; evening: string };
+  todos: { id: string; title: string; note?: string; date?: string; time?: string; repeat: AgentRepeat; priority: "normal" | "high"; done: boolean }[];
+  entries: { id: string; date: string; title: string; summary: string; mood?: string; themes?: string[]; text?: string }[];
+  transcript?: string;
+  source?: "voice" | "text";
+  hint?: "auto" | "todo" | "journal";
+  prompt?: string;
+  threadId?: string;
+  messages?: { role: "user" | "assistant"; content: string }[];
+}
+
+// Streaming UTF-8 decode; Hermes normally has TextDecoder, this covers it if not.
+function utf8Decoder(): { decode: (b: Uint8Array, o?: { stream: boolean }) => string } {
+  if (typeof TextDecoder !== "undefined") return new TextDecoder();
+  let carry: number[] = [];
+  return {
+    decode(bytes) {
+      const all = [...carry, ...bytes];
+      let end = all.length;
+      // Hold back an incomplete trailing sequence for the next chunk.
+      for (let i = Math.max(0, all.length - 3); i < all.length; i++) {
+        const b = all[i];
+        const need = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+        if (need > 1 && i + need > all.length) {
+          end = i;
+          break;
+        }
+      }
+      carry = all.slice(end);
+      let out = "";
+      for (let i = 0; i < end; ) {
+        const b = all[i];
+        const len = b < 0x80 ? 1 : b < 0xe0 ? 2 : b < 0xf0 ? 3 : 4;
+        let cp = len === 1 ? b : b & (0xff >> (len + 1));
+        for (let k = 1; k < len; k++) cp = (cp << 6) | (all[i + k] & 0x3f);
+        i += len;
+        out += String.fromCodePoint(cp);
+      }
+      return out;
+    },
+  };
+}
+
+// POST /v1/agent and feed each NDJSON event to `onEvent` as it arrives. Resolves with
+// the final result; a server-side `error` event becomes an ApiError.
+export async function agent(body: AgentRequest, onEvent: (ev: AgentEvent) => void): Promise<AgentResult> {
+  const id = rid();
+  const path = "/v1/agent";
+  const started = Date.now();
+  const controller = new AbortController();
+  // Long, because a chat turn can search the web; reset on every event received.
+  let timer = setTimeout(() => controller.abort(), 90_000);
+  const bump = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), 90_000);
+  };
+  log.info(`→ POST ${path}`, { rid: id, mode: body.mode, hint: body.hint });
+  let result: AgentResult | null = null;
+  let failure: ApiError | null = null;
+  const handle = (line: string) => {
+    if (!line.trim()) return;
+    let ev: AgentEvent;
+    try {
+      ev = JSON.parse(line) as AgentEvent;
+    } catch {
+      return;
+    }
+    if (ev.t === "done") result = ev.result;
+    else if (ev.t === "error") failure = new ApiError(502, ev.code, ev.message, id);
+    else onEvent(ev);
+  };
+  try {
+    const res = await fetch(`${server}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "x-request-id": id, "x-app-version": `${appVersion} ${Platform.OS} ${Platform.Version}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let code = "http_error";
+      try {
+        code = (JSON.parse(text) as { error?: string }).error ?? code;
+      } catch {}
+      log.error(`✗ ${path} ${res.status}`, { rid: id, ms: Date.now() - started, body: text.slice(0, 500) });
+      throw new ApiError(res.status, code, text.slice(0, 200), id);
+    }
+    const reader = res.body?.getReader();
+    if (reader) {
+      const decoder = utf8Decoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        bump();
+        buf += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          handle(buf.slice(0, nl));
+          buf = buf.slice(nl + 1);
+        }
+      }
+      handle(buf);
+    } else {
+      // No streaming body (shouldn't happen with expo/fetch): parse it all at the end.
+      for (const line of (await res.text()).split("\n")) handle(line);
+    }
+  } catch (e) {
+    if (e instanceof ApiError) throw e;
+    const aborted = controller.signal.aborted;
+    log.error(`✗ ${path} failed`, { rid: id, ms: Date.now() - started, aborted, err: e });
+    throw new ApiError(0, aborted ? "timeout" : "network", aborted ? "请求超时" : e instanceof Error ? e.message : String(e), id);
+  } finally {
+    clearTimeout(timer);
+  }
+  if (failure) {
+    log.error(`✗ ${path} agent error`, { rid: id, ms: Date.now() - started, code: (failure as ApiError).code });
+    throw failure;
+  }
+  if (!result) throw new ApiError(0, "network", "连接中断了", id);
+  const r = result as AgentResult;
+  log.info(`← ${path}`, { rid: id, ms: Date.now() - started, route: r.route, ops: r.ops.length });
+  return r;
+}
+
 export interface TrackEvent {
   e: string;
   t: string;

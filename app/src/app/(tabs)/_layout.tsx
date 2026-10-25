@@ -18,7 +18,7 @@ const HAS_ACCESSORY = Platform.OS === "ios" && parseInt(String(Platform.Version)
 export default function TabsLayout() {
   const todos = useStore((s) => s.todos);
   const allDay = useStore((s) => s.settings.todoAllDayTime);
-  const inbox = useStore((s) => s.inbox.length);
+  const inbox = useStore((s) => s.inbox.filter((p) => p.kind !== "unclear").length);
   const badge = useMemo(() => todayTodos(todos, allDay).length + inbox, [todos, allDay, inbox]);
 
   return (
@@ -34,7 +34,7 @@ export default function TabsLayout() {
         <NativeTabs.Trigger name="todos">
           <NativeTabs.Trigger.Icon sf={{ default: "checklist", selected: "checklist.checked" }} md="checklist" />
           <NativeTabs.Trigger.Label>待办</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Badge hidden={!badge}>{badge > 99 ? "99+" : String(badge)}</NativeTabs.Trigger.Badge>
+          {badge ? <NativeTabs.Trigger.Badge>{badge > 99 ? "99+" : String(badge)}</NativeTabs.Trigger.Badge> : null}
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="entries">
           <NativeTabs.Trigger.Icon sf={{ default: "book", selected: "book.fill" }} md="menu_book" />

@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Device from "expo-device";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { NoticeBridge, RunPill } from "@/components/Activity";
 import { DrawerHost } from "@/components/Drawer";
 import { LockScreen } from "@/components/LockScreen";
 import { Mascot } from "@/components/Mascot";
@@ -105,10 +106,13 @@ export default function RootLayout() {
             <Stack.Screen name="record" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
             <Stack.Screen name="processing" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
             <Stack.Screen name="write" options={{ presentation: "modal" }} />
+            <Stack.Screen name="pending" />
             <Stack.Screen name="edit/[id]" options={{ presentation: "modal" }} />
           </Stack>
         ) : null}
         {loaded ? <DrawerHost /> : null}
+        {loaded ? <NoticeBridge /> : null}
+        {loaded ? <RunPill /> : null}
         {loaded ? <ToastHost /> : null}
         {loaded ? <PermissionHost /> : null}
         {loaded && locked ? <LockScreen /> : null}

@@ -214,20 +214,27 @@ export function Sheet({ visible, onClose, icon, title, body, children, button = 
 // ---------- toast ----------
 
 type ToastAction = { label: string; onPress: () => void };
-type ToastMsg = { id: number; title: string; body?: string; action?: ToastAction };
+type ToastMsg = { id: number; title: string; body?: string; actions: ToastAction[] };
 let toastState: ToastMsg | null = null;
 const toastListeners = new Set<() => void>();
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function toast(title: string, body?: string, action?: ToastAction) {
-  toastState = { id: Date.now(), title, body, action };
+function setToast(msg: ToastMsg | null) {
+  toastState = msg;
   toastListeners.forEach((l) => l());
+}
+
+// Bottom notice. Pass one action or several (e.g. 撤销 + 查看); with actions it stays longer.
+export function toast(title: string, body?: string, action?: ToastAction | ToastAction[]) {
+  const actions = action ? (Array.isArray(action) ? action : [action]) : [];
+  setToast({ id: Date.now(), title, body, actions });
   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toastState = null;
-    toastListeners.forEach((l) => l());
-  }, action ? 5000 : 3500);
+  toastTimer = setTimeout(() => setToast(null), actions.length ? 6500 : 3500);
+}
+
+export function useToastVisible(): boolean {
+  return useSyncExternalStore((l) => { toastListeners.add(l); return () => toastListeners.delete(l); }, () => toastState !== null);
 }
 
 export function ToastHost() {
@@ -243,21 +250,24 @@ export function ToastHost() {
       pointerEvents="box-none"
       style={{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + TAB_BAR_SPACE - 10, zIndex: 300, opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.sheet, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: colors.border, ...shadow() }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: colors.sheet, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: colors.border, ...shadow() }}>
         <Mascot size={38} />
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}>{msg.title}</Text>
-          {msg.body ? <Text style={{ color: colors.textSoft, fontSize: 13, marginTop: 2 }}>{msg.body}</Text> : null}
+          <Text style={{ color: colors.text, fontWeight: "700", fontSize: 15 }} numberOfLines={2}>{msg.title}</Text>
+          {msg.body ? <Text style={{ color: colors.textSoft, fontSize: 13, lineHeight: 19, marginTop: 2 }} numberOfLines={4}>{msg.body}</Text> : null}
+          {msg.actions.length ? (
+            <View style={{ flexDirection: "row", gap: 16, marginTop: 8 }}>
+              {msg.actions.map((a) => (
+                <Pressable key={a.label} hitSlop={8} onPress={() => { tap(); setToast(null); a.onPress(); }}>
+                  <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>{a.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
-        {msg.action ? (
-          <Pressable hitSlop={8} onPress={() => { tap(); msg.action!.onPress(); toastState = null; toastListeners.forEach((l) => l()); }} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.primarySoft }}>
-            <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>{msg.action.label}</Text>
-          </Pressable>
-        ) : (
-          <Pressable hitSlop={10} onPress={() => { toastState = null; toastListeners.forEach((l) => l()); }}>
-            <Ionicons name="close" size={18} color={colors.textSoft} />
-          </Pressable>
-        )}
+        <Pressable hitSlop={10} onPress={() => setToast(null)}>
+          <Ionicons name="close" size={18} color={colors.textSoft} />
+        </Pressable>
       </View>
     </Animated.View>
   );

@@ -10,6 +10,7 @@ import { nowWall, setAppZone } from "./zone";
 import { countWords, dayKey } from "./format";
 import { scheduleRemember, syncTodoReminders, type CheckinPrefs } from "./notify";
 import { addDays, dueLabel, isOverdue, localNow, nextOccurrence, overdueDays, sortTodos, timeZone, today, type Todo, type TodoDraft } from "./todo";
+import { endRun, isWatched, notify, registerUndo, runUndo, startRun, stepRun, updateRun, type NoticeAction } from "./runs";
 
 const log = logger("store");
 
@@ -26,6 +27,8 @@ export interface Entry {
   waveform?: number[]; // 0..1 loudness bars for the player (from recording, or learned on first play)
   prompt?: string; // question the user was answering
   followUpOf?: string; // entry id whose follow-up this answers
+  threadId?: string; // root entry this one adds to ("补充" / follow-up answers)
+  routed?: boolean; // the agent already decided where this memo goes
   rawText?: string;
   text?: string;
   title?: string;
@@ -44,16 +47,19 @@ export interface Entry {
   keepOnHome?: boolean; // pinned to Home's "回头再看"
   returnAt?: string; // resurfaces on Home from this time
   mode?: "todo"; // recorded from the to-do tab: lean towards making tasks
-  intentChecked?: boolean; // note-vs-todo detection already ran
-  skipIntent?: boolean; // user said "this is a note", don't ask again
+  intentChecked?: boolean; // legacy (pre-agent): note-vs-todo detection already ran
+  skipIntent?: boolean; // legacy: user said "this is a note"
 }
 
-// A memo the model turned into to-dos, waiting for the user to confirm.
-// kind "todo" memos never become journal entries; "mixed" ones also have `journalId`.
+// Waiting on the user. "unclear": the agent couldn't tell what a memo was for (a test,
+// a fragment) and parked it with `title`/`reason`. "todo"/"mixed": legacy to-do drafts
+// from before the agent, confirmed on /confirm/[id].
 export interface PendingIntent {
   id: string;
   createdAt: string;
-  kind: "todo" | "mixed";
+  kind: "todo" | "mixed" | "unclear";
+  title?: string;
+  reason?: string;
   source: "voice" | "text";
   text: string;
   reply: string;
@@ -77,6 +83,10 @@ export interface ChatMessage {
   content: string;
   at: string;
   error?: boolean;
+  pending?: boolean; // reply still streaming in
+  voice?: boolean; // question spoken from Home
+  ops?: string[]; // what the agent changed this turn, one line each
+  undoId?: string; // in-memory undo handle for those changes
 }
 
 export interface Chat {
@@ -108,6 +118,7 @@ export interface Settings {
 export interface InsightsCache {
   at: string;
   entryCount: number;
+  sig?: string; // insightsSignature() when generated
   data: api.Insights;
 }
 
@@ -186,6 +197,8 @@ async function readState(beforeReady?: () => void): Promise<void> {
         ...parsed,
         settings: { ...DEFAULT_STATE.settings, ...parsed.settings },
       };
+      // A reply that was streaming when the app died won't finish now.
+      state.chats = state.chats.map((c) => (c.messages.some((m) => m.pending) ? { ...c, messages: c.messages.map((m) => (m.pending ? { ...m, pending: false, error: !m.content, content: m.content || "上次没回答完，再问一次吧" } : m)) } : c));
     }
     log.info("state loaded", { entries: state.entries.length, chats: state.chats.length, todos: state.todos.length, inbox: state.inbox.length, hasToken: !!state.settings.token });
   } catch (e) {
@@ -286,8 +299,14 @@ export function sortedEntries(entries: Entry[]): Entry[] {
   return [...entries].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export function createVoiceEntry(opts: { id: string; audioFile: string; durationSec: number; waveform?: number[]; prompt?: string; followUpOf?: string; mode?: "todo" }): Entry {
-  const entry: Entry = { ...opts, createdAt: new Date().toISOString(), kind: "voice", status: "transcribing" };
+// The thread an entry belongs to is named after its first entry.
+export function rootOf(id: string): string {
+  return getEntry(id)?.threadId ?? id;
+}
+
+export function createVoiceEntry(opts: { id: string; audioFile: string; durationSec: number; waveform?: number[]; prompt?: string; followUpOf?: string; threadId?: string; mode?: "todo" }): Entry {
+  const threadId = opts.threadId ? rootOf(opts.threadId) : opts.followUpOf ? rootOf(opts.followUpOf) : undefined;
+  const entry: Entry = { ...opts, threadId, createdAt: new Date().toISOString(), kind: "voice", status: "transcribing" };
   setState((s) => ({ ...s, entries: [entry, ...s.entries] }));
   log.info("voice entry created", { id: entry.id, durationSec: opts.durationSec, prompt: !!opts.prompt });
   track("entry_created", { kind: "voice", sec: Math.round(opts.durationSec), mode: opts.mode ?? "note", prompt: !!opts.prompt });
@@ -296,8 +315,9 @@ export function createVoiceEntry(opts: { id: string; audioFile: string; duration
   return entry;
 }
 
-export function createTextEntry(text: string, opts: { prompt?: string; followUpOf?: string } = {}): Entry {
-  const entry: Entry = { id: newId(), createdAt: new Date().toISOString(), kind: "text", status: "analyzing", rawText: text, ...opts };
+export function createTextEntry(text: string, opts: { prompt?: string; followUpOf?: string; threadId?: string; routed?: boolean } = {}): Entry {
+  const threadId = opts.threadId ? rootOf(opts.threadId) : opts.followUpOf ? rootOf(opts.followUpOf) : undefined;
+  const entry: Entry = { id: newId(), createdAt: new Date().toISOString(), kind: "text", status: "analyzing", rawText: text, ...opts, threadId };
   setState((s) => ({ ...s, entries: [entry, ...s.entries] }));
   log.info("text entry created", { id: entry.id, chars: text.length });
   track("entry_created", { kind: "text", chars: text.length, prompt: !!opts.prompt });
@@ -346,7 +366,8 @@ export function editEntry(id: string, patch: { title?: string; text?: string }) 
 
 // Re-run the AI pass on the existing transcript.
 export function reanalyze(id: string) {
-  patchEntry(id, { status: "analyzing", error: undefined });
+  // Only the journal pass: never re-route an entry the user already has.
+  patchEntry(id, { status: "analyzing", error: undefined, routed: true });
   void processEntry(id);
 }
 
@@ -367,116 +388,324 @@ export async function semanticSearch(query: string): Promise<{ entry: Entry; rea
 
 const running = new Set<string>();
 
-// Transcribe (voice only) then analyze. Safe to call again for retry/resume.
+// Transcribe (voice only), then let the agent decide where the memo goes (journal /
+// to-do / chat / pending) and do it. Memos it already routed, and re-runs, only get the
+// journal analysis. Safe to call again for retry/resume.
 export async function processEntry(id: string): Promise<void> {
   if (running.has(id)) return;
   running.add(id);
   const t0 = Date.now();
+  let e = getEntry(id);
+  const routed = !!(e && (e.routed || e.intentChecked || e.skipIntent));
+  if (e && !routed) startRun(id, "capture");
   try {
-    let e = getEntry(id);
     if (!e) return;
     if (e.kind === "voice" && !e.rawText) {
       if (!isWeb && !audioFile(e.audioFile!).exists) {
         log.error("audio file missing", { id, file: e.audioFile });
         patchEntry(id, { status: "failed", error: "录音文件丢失（旧版本的问题），这条只能删除" });
+        if (!routed) endRun(id, { status: "failed", error: "录音文件丢失" });
         return;
       }
       patchEntry(id, { status: "transcribing", error: undefined });
+      stepRun(id, { id: "asr", label: "转写语音", state: "run" });
       const uri = isWeb ? e.audioFile! : audioFile(e.audioFile!).uri;
       const t = await api.transcribe(uri, state.settings.language);
       log.info("transcribed", { id, chars: t.text.length, lang: t.language, dropped: t.droppedSegments, audioSec: t.duration });
       if (!t.text.trim()) {
         patchEntry(id, { status: "failed", error: "没有识别到说话内容" });
+        if (!routed) endRun(id, { status: "failed", error: "没有识别到说话内容" });
         return;
       }
+      stepRun(id, { id: "asr", label: `转写语音 · ${t.text.length} 字`, state: "done" });
       patchEntry(id, { rawText: t.text });
     }
     e = getEntry(id)!;
     patchEntry(id, { status: "analyzing", error: undefined });
-    if (!e.intentChecked && !e.skipIntent) {
-      if ((await routeIntent(e)) === "moved") return;
-      e = getEntry(id)!;
+    if (!routed) {
+      await captureEntry(e, t0);
+      return;
     }
-    const recent = sortedEntries(state.entries)
-      .filter((x) => x.id !== id && x.status === "done")
-      .slice(0, 8)
-      .map((x) => ({ date: dayKey(x.createdAt), title: x.title ?? "", summary: x.summary ?? "" }));
-    const a = await api.analyze({ text: e.rawText!, prompt: e.prompt, recent });
-    patchEntry(id, {
-      status: "done",
-      title: a.title,
-      summary: a.summary,
-      text: a.cleaned_text || e.rawText,
-      mood: a.mood,
-      moodLabel: a.mood_label,
-      themes: a.themes,
-      followUp: a.follow_up,
-      insight: a.insight,
-      insightTitle: a.insight_title,
-      reflection: a.reflection,
-      action: a.action,
-      quote: a.quote,
-      words: countWords(a.cleaned_text || e.rawText || ""),
-    });
+    const a = await analyzeOnly(e);
     log.info("entry processed", { id, ms: Date.now() - t0, mood: a.mood });
     track("entry_processed", { kind: e.kind, ms: Date.now() - t0, mood: a.mood });
-    void scheduleRemember(state.settings.checkins, { id, title: a.title, followUp: a.follow_up });
   } catch (err) {
     log.error("entry processing failed", { id, ms: Date.now() - t0, err });
     track("entry_failed", { ms: Date.now() - t0, error: api.describeError(err).slice(0, 60) });
     patchEntry(id, { status: "failed", error: api.describeError(err) });
+    if (!routed) endRun(id, { status: "failed", error: api.describeError(err) });
   } finally {
     running.delete(id);
   }
 }
 
-function intentRequest(text: string, hint: "auto" | "todo"): api.IntentRequest {
-  const open = openTodos();
+function saveAnalysis(e: Entry, a: api.Analysis, extra: Partial<Entry> = {}) {
+  patchEntry(e.id, {
+    status: "done",
+    title: a.title,
+    summary: a.summary,
+    text: a.cleaned_text || e.rawText,
+    mood: a.mood,
+    moodLabel: a.mood_label,
+    themes: a.themes,
+    followUp: a.follow_up,
+    insight: a.insight,
+    insightTitle: a.insight_title,
+    reflection: a.reflection,
+    action: a.action,
+    quote: a.quote,
+    words: countWords(a.cleaned_text || e.rawText || ""),
+    ...extra,
+  });
+  void scheduleRemember(state.settings.checkins, { id: e.id, title: a.title, followUp: a.follow_up });
+  refreshInsightsSoon();
+}
+
+async function analyzeOnly(e: Entry): Promise<api.Analysis> {
+  const recent = sortedEntries(state.entries)
+    .filter((x) => x.id !== e.id && x.status === "done")
+    .slice(0, 8)
+    .map((x) => ({ date: dayKey(x.createdAt), title: x.title ?? "", summary: x.summary ?? "" }));
+  const a = await api.analyze({ text: e.rawText!, prompt: e.prompt, recent });
+  saveAnalysis(e, a);
+  return a;
+}
+
+// What the agent sees: to-dos (open + recently done) and the journal, newest first,
+// with full text for the newest entries up to a budget.
+function agentBase(excludeEntry?: string): Omit<api.AgentRequest, "mode"> {
+  const s = state;
+  const done = s.todos.filter((t) => t.doneAt).sort((a, b) => b.doneAt!.localeCompare(a.doneAt!)).slice(0, 15);
+  const todos = [...openTodos().slice(0, 250), ...done].map((t) => ({
+    id: t.id,
+    title: t.title,
+    ...(t.note ? { note: t.note } : {}),
+    ...(t.date ? { date: t.date } : {}),
+    ...(t.time ? { time: t.time } : {}),
+    repeat: t.repeat,
+    priority: t.priority,
+    done: !!t.doneAt,
+  }));
+  let budget = 120_000;
+  const entries = sortedEntries(s.entries)
+    .filter((e) => e.status === "done" && e.id !== excludeEntry)
+    .slice(0, 400)
+    .map((e) => {
+      const text = e.text ?? e.rawText ?? "";
+      const withText = budget > 0 && text ? text : "";
+      budget -= withText.length;
+      return {
+        id: e.id,
+        date: dayKey(e.createdAt),
+        title: e.title ?? "",
+        summary: e.summary ?? "",
+        ...(e.moodLabel ? { mood: e.moodLabel } : {}),
+        ...(e.themes?.length ? { themes: e.themes } : {}),
+        ...(withText ? { text: withText } : {}),
+      };
+    });
   return {
-    text,
     now: localNow(),
     tz: timeZone(),
-    hint,
-    openTodos: open.map((t, index) => ({ index, title: t.title, ...(t.date ? { due: dueLabel(t) } : {}) })),
-    defaults: { morning: state.settings.todoAllDayTime, evening: "20:00" },
+    ...(s.settings.name ? { name: s.settings.name } : {}),
+    defaults: { morning: s.settings.todoAllDayTime, evening: "20:00" },
+    todos,
+    entries,
   };
 }
 
-function toPending(base: Omit<PendingIntent, "drafts" | "completes" | "reply" | "kind">, intent: api.Intent, open: Todo[]): PendingIntent {
-  return {
-    ...base,
-    kind: intent.kind === "mixed" ? "mixed" : "todo",
-    reply: intent.reply,
-    drafts: intent.todos,
-    completes: intent.completes.filter((c) => open[c.index]).map((c) => ({ todoId: open[c.index].id, title: open[c.index].title, reason: c.reason })),
-  };
-}
+async function captureEntry(e: Entry, t0: number) {
+  const id = e.id;
+  const hint = e.mode === "todo" ? "todo" : e.prompt || e.threadId || e.kind === "text" ? "journal" : "auto";
+  let chatId: string | undefined;
+  const res = await api.agent(
+    { mode: "capture", ...agentBase(id), transcript: e.rawText!, source: e.kind, hint, ...(e.prompt ? { prompt: e.prompt } : {}), ...(e.threadId ? { threadId: e.threadId } : {}) },
+    (ev) => {
+      if (ev.t === "step") {
+        stepRun(id, ev);
+        if (chatId) stepRun(chatId, ev);
+      } else if (ev.t === "route") {
+        updateRun(id, { route: ev.route });
+        if (ev.route === "chat") {
+          chatId = startChatFromCapture(e, ev.title);
+          startRun(chatId, "chat");
+          updateRun(id, { chatId });
+        }
+      } else if (ev.t === "text" && chatId) appendChatDelta(chatId, ev.delta);
+    },
+  );
+  const route = res.route ?? "journal";
+  const steps = { route, ops: res.ops.length, ms: Date.now() - t0, hint };
+  log.info("captured", { id, ...steps, continues: !!res.continues });
+  track("agent_capture", { ...steps, kind: e.kind, thread: !!(res.continues || e.threadId) });
 
-// Note or to-do? "moved" = the memo was only tasks and now waits in the inbox.
-async function routeIntent(e: Entry): Promise<"note" | "mixed" | "moved"> {
-  const hint = e.mode === "todo" ? "todo" : "auto";
-  try {
-    const open = openTodos();
-    const intent = await api.intent(intentRequest(e.rawText!, hint));
-    patchEntry(e.id, { intentChecked: true });
-    log.info("intent", { id: e.id, hint, kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length });
-    track("intent", { hint, kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length, asks: intent.todos.filter((t) => t.question).length });
-    if (intent.kind === "note" || (!intent.todos.length && !intent.completes.length)) return "note";
-    const base = { id: e.id, createdAt: e.createdAt, source: e.kind, text: e.rawText!, audioFile: e.audioFile, durationSec: e.durationSec, prompt: e.prompt };
-    if (intent.kind === "mixed") {
-      const p = toPending({ ...base, id: newId(), journalId: e.id }, intent, open);
-      setState((s) => ({ ...s, inbox: [p, ...s.inbox] }));
-      return "mixed";
-    }
-    const p = toPending(base, intent, open);
-    setState((s) => ({ ...s, entries: s.entries.filter((x) => x.id !== e.id), inbox: [p, ...s.inbox] }));
-    return "moved";
-  } catch (err) {
-    // A to-do memo can be retried; a journal memo shouldn't be held up by this step.
-    if (hint === "todo") throw err;
-    log.warn("intent failed, keeping as note", { id: e.id, err });
-    return "note";
+  if (route === "chat" && chatId) {
+    deleteEntry(id);
+    finishChatTurn(chatId, res);
+    endRun(id, { route, chatId });
+    if (!isWatched(id)) notify({ title: "这是个问题，已转到对话", body: res.title || undefined, actions: [{ label: "打开", path: `/chats/${chatId}` }] });
+    return;
   }
+
+  if (route === "pending") {
+    const p = res.pending ?? { title: "这条先放着", reason: "没听出你想记录还是想问什么。" };
+    setState((s) => ({ ...s, entries: s.entries.filter((x) => x.id !== id) }));
+    addUnclear({ id, createdAt: e.createdAt, source: e.kind, text: e.rawText!, title: p.title, reason: p.reason, audioFile: e.audioFile, durationSec: e.durationSec, prompt: e.prompt });
+    endRun(id, { route });
+    notify({ title: "先放进了待确认", body: p.reason, actions: [{ label: "去看看", path: "/pending" }] });
+    return;
+  }
+
+  const applied = applyOps(res.ops, e.kind);
+  if (route === "todo") {
+    deleteEntry(id);
+    // Undo also keeps the words, parked in 待确认, so nothing said is lost.
+    const undo = applied.undoId
+      ? registerUndo(() => {
+          runUndo(applied.undoId!);
+          addUnclear({ id: newId(), createdAt: e.createdAt, source: e.kind, text: e.rawText!, title: "撤销了的待办", reason: "你撤销了这次的待办改动，原话留在这里。", prompt: e.prompt });
+        })
+      : undefined;
+    endRun(id, { route });
+    notify({
+      title: res.reply || applied.lines[0] || "待办已更新",
+      body: res.reply && applied.lines.length > 1 ? applied.lines.join("\n") : undefined,
+      actions: [...(undo ? [{ label: "撤销", undo }] : []), { label: "查看", path: "/todos" }],
+      remind: applied.created.some((t) => t.date),
+    });
+    return;
+  }
+
+  // journal (possibly with to-do changes, possibly continuing an earlier entry)
+  const threadId = res.continues && getEntry(res.continues) ? rootOf(res.continues) : e.threadId;
+  const a = res.analysis ?? (await api.analyze({ text: e.rawText!, prompt: e.prompt, recent: [] }));
+  saveAnalysis(e, a, { routed: true, threadId });
+  endRun(id, { route });
+  if (!isWatched(id) || applied.lines.length) {
+    const actions: NoticeAction[] = [{ label: "查看", path: `/entry/${id}` }];
+    if (applied.undoId) actions.unshift({ label: "撤销改动", undo: applied.undoId });
+    notify({
+      title: threadId ? "后续整理好了" : "记下了",
+      body: [a.title, ...applied.lines].join("\n"),
+      actions,
+      remind: applied.created.some((t) => t.date),
+    });
+  }
+}
+
+// ---------- applying agent changes ----------
+
+function patchTodo(t: Todo, p: Partial<api.AgentTodoFields>): Todo {
+  let next: Todo = { ...t };
+  if (p.title?.trim()) next.title = p.title.trim();
+  if (p.note !== undefined) next = p.note.trim() ? { ...next, note: p.note.trim() } : (({ note: _n, ...rest }) => rest)(next);
+  if (p.priority) next.priority = p.priority;
+  if (p.date !== undefined) {
+    if (p.date) next.date = p.date;
+    else {
+      const { date: _d, time: _t, ...rest } = next;
+      next = { ...rest, repeat: "none" };
+    }
+  }
+  if (p.time !== undefined) {
+    if (p.time && next.date) next.time = p.time;
+    else next = (({ time: _t, ...rest }) => rest)(next);
+  }
+  if (p.repeat) next.repeat = next.date ? p.repeat : "none";
+  if (p.date !== undefined || p.time !== undefined) next = (({ ask: _a, ...rest }) => rest)(next);
+  return next;
+}
+
+interface Applied {
+  lines: string[]; // human summary, one per change
+  undoId?: string;
+  created: Todo[];
+}
+
+// Applies a run's ops in one go and registers a single undo that puts every touched
+// to-do back the way it was (and removes entries it saved).
+function applyOps(ops: api.AgentOp[], source: Todo["source"]): Applied {
+  const before = new Map<string, Todo | null>(); // null = didn't exist before
+  const lines: string[] = [];
+  const created: Todo[] = [];
+  const notes: string[] = [];
+  const at = new Date().toISOString();
+  let list = [...state.todos];
+  const find = (id: string) => list.find((t) => t.id === id);
+  const put = (t: Todo) => (list = list.map((x) => (x.id === t.id ? t : x)));
+  const snap = (t: Todo) => !before.has(t.id) && before.set(t.id, t);
+  for (const o of ops) {
+    if (o.op === "todo.create") {
+      const d = o.todo;
+      if (!d.title.trim()) continue;
+      const t: Todo = {
+        id: newId(),
+        title: d.title.trim(),
+        ...(d.note.trim() ? { note: d.note.trim() } : {}),
+        ...(d.date ? { date: d.date } : {}),
+        ...(d.date && d.time ? { time: d.time } : {}),
+        repeat: d.date ? d.repeat : "none",
+        priority: d.priority,
+        createdAt: at,
+        source,
+        ...(o.ask ? { ask: o.ask } : {}),
+      };
+      list = [t, ...list];
+      before.set(t.id, null);
+      created.push(t);
+      lines.push(`新建「${t.title}」${t.date ? ` · ${dueLabel(t)}` : ""}`);
+    } else if (o.op === "todo.update") {
+      const t = find(o.id);
+      if (!t) continue;
+      snap(t);
+      const next = patchTodo(t, o.patch);
+      put(next);
+      const timed = o.patch.date !== undefined || o.patch.time !== undefined;
+      lines.push(`修改「${next.title}」${timed ? ` → ${next.date ? dueLabel(next) : "不定时间"}` : ""}`);
+    } else if (o.op === "todo.complete") {
+      const t = find(o.id);
+      if (!t || t.doneAt) continue;
+      snap(t);
+      put(t.repeat !== "none" && t.date ? { ...t, date: nextOccurrence(t), lastDoneAt: at } : { ...t, doneAt: at });
+      lines.push(`完成「${t.title}」`);
+    } else if (o.op === "todo.reopen") {
+      const t = find(o.id);
+      if (!t || !t.doneAt) continue;
+      snap(t);
+      put({ ...t, doneAt: undefined });
+      lines.push(`重新打开「${t.title}」`);
+    } else if (o.op === "todo.delete") {
+      const t = find(o.id);
+      if (!t) continue;
+      snap(t);
+      list = list.filter((x) => x.id !== o.id);
+      lines.push(`删除「${t.title}」`);
+    } else if (o.op === "entry.create") {
+      notes.push(o.text);
+    }
+  }
+  if (before.size) setTodos(() => list);
+  const entryIds = notes.map((text) => createTextEntry(text, { routed: true }).id);
+  if (entryIds.length) lines.push(entryIds.length > 1 ? `存了 ${entryIds.length} 条记录` : "存了一条记录");
+  const count = (k: string) => ops.filter((o) => o.op === k).length;
+  if (ops.length) track("agent_ops", { create: count("todo.create"), update: count("todo.update"), complete: count("todo.complete"), remove: count("todo.delete"), entries: entryIds.length });
+  const undoId =
+    before.size || entryIds.length
+      ? registerUndo(() => {
+          setTodos((cur) => {
+            let out = cur;
+            for (const [id, prev] of before) {
+              if (prev === null) out = out.filter((t) => t.id !== id);
+              else out = out.some((t) => t.id === id) ? out.map((t) => (t.id === id ? prev : t)) : [prev, ...out];
+            }
+            return out;
+          });
+          for (const id of entryIds) deleteEntry(id);
+          log.info("agent changes undone", { todos: before.size, entries: entryIds.length });
+          track("agent_undo", { todos: before.size, entries: entryIds.length });
+        })
+      : undefined;
+  return { lines, undoId, created };
 }
 
 // On launch, finish anything that was interrupted (app killed mid-request).
@@ -502,10 +731,54 @@ export function entriesContext(withText: boolean): api.EntryContext[] {
     }));
 }
 
-export async function refreshInsights(): Promise<void> {
-  const ctx = entriesContext(false);
-  const data = await api.insights(ctx);
-  setState((s) => ({ ...s, insights: { at: new Date().toISOString(), entryCount: ctx.length, data } }));
+// Changes whenever a finished entry is added, removed or re-titled.
+export function insightsSignature(entries: Entry[] = state.entries): string {
+  const done = entries.filter((e) => e.status === "done");
+  const latest = done.reduce((m, e) => (e.createdAt > m ? e.createdAt : m), "");
+  return `${done.length}|${latest}|${done.reduce((n, e) => n + (e.title?.length ?? 0), 0)}`;
+}
+
+export function insightsStale(): boolean {
+  const c = state.insights;
+  return !c || (c.sig ? c.sig !== insightsSignature() : c.entryCount !== state.entries.filter((e) => e.status === "done").length);
+}
+
+let insightsInflight: Promise<void> | null = null;
+
+// One request at a time; callers arriving meanwhile share it.
+export function refreshInsights(): Promise<void> {
+  insightsInflight ??= (async () => {
+    try {
+      const ctx = entriesContext(false);
+      const sig = insightsSignature();
+      const data = await timed("insights", () => api.insights(ctx), { entries: ctx.length });
+      setState((s) => ({ ...s, insights: { at: new Date().toISOString(), entryCount: ctx.length, sig, data } }));
+      log.info("insights refreshed", { entries: ctx.length });
+    } finally {
+      insightsInflight = null;
+      emit();
+    }
+  })();
+  emit();
+  return insightsInflight;
+}
+
+export function useInsightsRefreshing(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => insightsInflight !== null,
+  );
+}
+
+// After new entries, keep the cross-entry patterns current without anyone asking.
+let lastAutoInsights = 0;
+function refreshInsightsSoon() {
+  if (!state.insights || !insightsStale() || Date.now() - lastAutoInsights < 10 * 60_000) return;
+  lastAutoInsights = Date.now();
+  refreshInsights().catch((e) => log.warn("auto insights failed", e));
 }
 
 // ---------- chats ----------
@@ -525,25 +798,99 @@ function patchChat(id: string, fn: (c: Chat) => Chat) {
   setState((s) => ({ ...s, chats: s.chats.map((c) => (c.id === id ? fn(c) : c)) }));
 }
 
-export async function sendChat(chatId: string, content: string): Promise<void> {
+// Streaming text arrives in tiny deltas; buffer and patch the reply ~12×/s.
+const deltas = new Map<string, string>();
+let deltaTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushDeltas() {
+  deltaTimer = null;
+  if (!deltas.size) return;
+  const pendingText = new Map(deltas);
+  deltas.clear();
+  setState((s) => ({
+    ...s,
+    chats: s.chats.map((c) => {
+      const add = pendingText.get(c.id);
+      if (!add) return c;
+      return { ...c, messages: c.messages.map((m, i) => (i === c.messages.length - 1 && m.pending ? { ...m, content: m.content + add } : m)) };
+    }),
+  }));
+}
+
+function appendChatDelta(chatId: string, delta: string) {
+  deltas.set(chatId, (deltas.get(chatId) ?? "") + delta);
+  deltaTimer ??= setTimeout(flushDeltas, 80);
+}
+
+function startChatFromCapture(e: Entry, title: string): string {
+  const now = new Date().toISOString();
+  const text = e.rawText ?? "";
+  const chat: Chat = {
+    id: newId(),
+    title: title || text.slice(0, 18),
+    createdAt: now,
+    updatedAt: now,
+    messages: [
+      { role: "user", content: text, at: e.createdAt, ...(e.kind === "voice" ? { voice: true } : {}) },
+      { role: "assistant", content: "", at: now, pending: true },
+    ],
+  };
+  setState((s) => ({ ...s, chats: [chat, ...s.chats] }));
+  return chat.id;
+}
+
+// Settle the streaming reply with the final text and apply what the agent changed.
+function finishChatTurn(chatId: string, res: api.AgentResult) {
+  flushDeltas();
+  const applied = applyOps(res.ops, "text");
+  patchChat(chatId, (c) => ({
+    ...c,
+    updatedAt: new Date().toISOString(),
+    messages: c.messages.map((m, i) =>
+      i === c.messages.length - 1 && m.pending
+        ? { role: "assistant", content: res.reply, at: new Date().toISOString(), ...(applied.lines.length ? { ops: applied.lines } : {}), ...(applied.undoId ? { undoId: applied.undoId } : {}) }
+        : m,
+    ),
+  }));
+  endRun(chatId);
+  if (applied.lines.length) {
+    notify({ title: applied.lines.length > 1 ? `改了 ${applied.lines.length} 处` : applied.lines[0], body: applied.lines.length > 1 ? applied.lines.join("\n") : undefined, actions: applied.undoId ? [{ label: "撤销", undo: applied.undoId }] : [], remind: applied.created.some((t) => t.date) });
+  }
+}
+
+// One chat turn with the agent: it can read the journal, search the web, change
+// to-dos and save notes. Progress shows as run steps; the reply streams in.
+export async function sendChat(chatId: string, content: string, opts: { voice?: boolean } = {}): Promise<void> {
   const now = new Date().toISOString();
   patchChat(chatId, (c) => ({
     ...c,
     title: c.messages.length === 0 ? content.slice(0, 18) : c.title,
     updatedAt: now,
-    messages: [...c.messages.filter((m) => !m.error), { role: "user", content, at: now }],
+    messages: [...c.messages.filter((m) => !m.error && !m.pending), { role: "user", content, at: now, ...(opts.voice ? { voice: true } : {}) }, { role: "assistant", content: "", at: now, pending: true }],
   }));
   const chat = state.chats.find((c) => c.id === chatId)!;
+  const history = chat.messages
+    .filter((m) => !m.pending && !m.error && m.content)
+    .slice(-30)
+    .map((m) => ({ role: m.role, content: m.ops?.length ? `${m.content}\n[已执行：${m.ops.join("；")}]` : m.content }));
+  startRun(chatId, "chat");
+  const t0 = Date.now();
   try {
-    track("chat_sent", { turns: chat.messages.length });
-    const { reply } = await api.chat(
-      chat.messages.map((m) => ({ role: m.role, content: m.content })),
-      entriesContext(true),
-    );
-    patchChat(chatId, (c) => ({ ...c, updatedAt: new Date().toISOString(), messages: [...c.messages, { role: "assistant", content: reply, at: new Date().toISOString() }] }));
+    track("chat_sent", { turns: history.length });
+    const res = await api.agent({ mode: "chat", ...agentBase(), messages: history }, (ev) => {
+      if (ev.t === "step") stepRun(chatId, ev);
+      else if (ev.t === "text") appendChatDelta(chatId, ev.delta);
+    });
+    finishChatTurn(chatId, res);
+    track("chat_replied", { ms: Date.now() - t0, ops: res.ops.length });
   } catch (err) {
     log.error("chat failed", { chatId, err });
-    patchChat(chatId, (c) => ({ ...c, messages: [...c.messages, { role: "assistant", content: api.describeError(err), at: new Date().toISOString(), error: true }] }));
+    flushDeltas();
+    endRun(chatId, { status: "failed", error: api.describeError(err) });
+    patchChat(chatId, (c) => ({
+      ...c,
+      messages: c.messages.map((m, i) => (i === c.messages.length - 1 && m.pending ? { role: "assistant", content: m.content ? `${m.content}\n\n（${api.describeError(err)}）` : api.describeError(err), at: new Date().toISOString(), error: !m.content } : m)),
+    }));
   }
 }
 
@@ -621,7 +968,9 @@ export function addTodos(drafts: Pick<TodoDraft, "title" | "note" | "date" | "ti
 }
 
 export function updateTodo(id: string, patch: Partial<Todo>) {
-  setTodos((list) => list.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  // Setting a time answers the agent's question about it.
+  const answered = "date" in patch || "time" in patch;
+  setTodos((list) => list.map((t) => (t.id === id ? { ...t, ...patch, ...(answered ? { ask: undefined } : {}) } : t)));
   log.info("todo updated", { id, fields: Object.keys(patch) });
 }
 
@@ -661,6 +1010,22 @@ export function clearDoneTodos() {
 }
 
 // ---------- pending intents (inbox) ----------
+
+function addUnclear(p: Omit<PendingIntent, "kind" | "drafts" | "completes" | "reply">) {
+  const item: PendingIntent = { ...p, kind: "unclear", drafts: [], completes: [], reply: "" };
+  setState((s) => ({ ...s, inbox: [item, ...s.inbox.filter((x) => x.id !== p.id)] }));
+}
+
+// "Ask this instead": a parked memo becomes the first question of a new conversation.
+export function pendingAsChat(id: string): string | undefined {
+  const p = state.inbox.find((x) => x.id === id);
+  if (!p) return;
+  const chat = createChat();
+  dropPending(id, true);
+  track("pending_as_chat");
+  void sendChat(chat.id, p.text, { voice: p.source === "voice" });
+  return chat.id;
+}
 
 export function getPending(id: string): PendingIntent | undefined {
   return state.inbox.find((p) => p.id === id || p.journalId === id);
@@ -713,7 +1078,7 @@ export function pendingAsNote(id: string): string | undefined {
     audioFile: p.audioFile,
     durationSec: p.durationSec,
     prompt: p.prompt,
-    skipIntent: true,
+    routed: true,
   };
   setState((s) => ({ ...s, entries: [entry, ...s.entries.filter((e) => e.id !== p.id)], inbox: s.inbox.filter((x) => x.id !== id) }));
   log.info("pending kept as note", { id });
@@ -722,24 +1087,17 @@ export function pendingAsNote(id: string): string | undefined {
   return entry.id;
 }
 
-// Typed quick-add on the to-do tab. Clear requests are created straight away;
-// anything the model wants to ask about goes to the confirm screen.
-export async function quickAddTodo(text: string): Promise<{ created: Todo[]; reply: string; completed: string[] } | { pendingId: string }> {
-  const open = openTodos();
-  const intent = await api.intent(intentRequest(text, "todo"));
-  log.info("quick add", { kind: intent.kind, todos: intent.todos.length, completes: intent.completes.length });
-  const p = toPending({ id: newId(), createdAt: new Date().toISOString(), source: "text", text }, { ...intent, kind: "todo" }, open);
-  const needsInput = p.drafts.some((d) => d.question) || p.completes.length > 0 || p.drafts.length === 0;
-  track("todo_quick_add", { todos: p.drafts.length, confirm: needsInput });
-  if (needsInput) {
-    if (!p.drafts.length && !p.completes.length) {
-      // Nothing recognisable: keep the user's words as the task.
-      p.drafts = [{ title: text.trim(), note: "", date: "", time: "", repeat: "none", priority: "normal", question: "", options: [] }];
-    }
-    setState((s) => ({ ...s, inbox: [p, ...s.inbox] }));
-    return { pendingId: p.id };
+// Typed quick-add on the to-do tab: the agent creates or changes to-dos straight away
+// (the caller offers undo). If it finds nothing to do, the words become the task.
+export async function quickAddTodo(text: string): Promise<{ reply: string; lines: string[]; undoId?: string; remind: boolean }> {
+  const res = await timed("todo_quick_add", () => api.agent({ mode: "capture", ...agentBase(), transcript: text, source: "text", hint: "todo" }, () => {}));
+  const ops = res.ops.filter((o) => o.op !== "entry.create");
+  if (ops.length) {
+    const applied = applyOps(ops, "text");
+    return { reply: res.reply || applied.lines[0] || "改好了", lines: applied.lines, undoId: applied.undoId, remind: applied.created.some((t) => t.date) };
   }
-  return { created: addTodos(p.drafts, "text"), reply: intent.reply, completed: [] };
+  const created = addTodos([{ title: text.trim(), note: "", date: "", time: "", repeat: "none", priority: "normal" }], "text");
+  return { reply: "加好了", lines: [], undoId: registerUndo(() => created.forEach((t) => deleteTodo(t.id))), remind: false };
 }
 
 // ---------- Home brief ----------

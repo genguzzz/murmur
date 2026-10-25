@@ -1,8 +1,10 @@
 import { ActivityIndicator, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { lastStep } from "@/components/Activity";
 import { Card, Chip, styles as ui } from "@/components/ui";
 import { MoodStamp } from "@/components/MoodStamp";
 import type { Entry } from "@/lib/store";
+import { useRun } from "@/lib/runs";
 import { timeAgo, clockOf } from "@/lib/format";
 import { colors, MOOD_LABELS } from "@/lib/theme";
 
@@ -10,12 +12,14 @@ const clockTime = clockOf;
 
 // `full` adds the stamp, time and theme chips (calendar/list); compact is for Home.
 export function EntryCard({ entry, onPress, full }: { entry: Entry; onPress: () => void; full?: boolean }) {
+  const run = useRun(entry.id);
   if (entry.status === "transcribing" || entry.status === "analyzing") {
+    const step = run ? lastStep(run.steps) : undefined;
     return (
       <Card onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <ActivityIndicator color={colors.primary} />
         <View style={{ flex: 1 }}>
-          <Text style={ui.title}>{entry.status === "transcribing" ? "正在转写…" : "正在整理…"}</Text>
+          <Text style={ui.title} numberOfLines={1}>{step?.state === "run" ? `${step.label}…` : entry.status === "transcribing" ? "正在转写…" : "正在整理…"}</Text>
           <Text style={ui.faint}>{entry.kind === "voice" ? `语音 ${Math.round(entry.durationSec ?? 0)} 秒` : "文字记录"} · {timeAgo(entry.createdAt)}</Text>
         </View>
       </Card>

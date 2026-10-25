@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Share, Text, View } from "react-native";
 // Gesture-handler ScrollView: lets the waveform's horizontal pan and this vertical
 // scroll negotiate natively instead of both moving at once.
@@ -29,6 +29,10 @@ export default function EntryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const entry = useStore((s) => s.entries.find((e) => e.id === id));
+  const all = useStore((s) => s.entries);
+  const root = entry?.threadId ?? id;
+  // The whole thread this entry belongs to: the first entry and everything added since.
+  const thread = useMemo(() => all.filter((e) => e.id === root || e.threadId === root).sort((a, b) => a.createdAt.localeCompare(b.createdAt)), [all, root]);
   const [menu, setMenu] = useState(false);
   const [pickTime, setPickTime] = useState(false);
   const [legend, setLegend] = useState(false);
@@ -66,7 +70,8 @@ export default function EntryScreen() {
     toast("已取消回看", "这条记录不再约时间回来。");
   };
 
-  const talkMore = () => router.push({ pathname: "/record", params: entry.followUp ? { prompt: entry.followUp, followUpOf: entry.id } : {} });
+  const followUpParams = entry.followUp && !entry.followUpDone ? { prompt: entry.followUp, followUpOf: entry.id } : {};
+  const talkMore = () => router.push({ pathname: "/record", params: { threadOf: root, ...followUpParams } });
 
   return (
     <Screen>
@@ -143,6 +148,27 @@ export default function EntryScreen() {
           </Card>
         ) : null}
 
+        {thread.length > 1 ? (
+          <>
+            <SectionTitle icon="git-commit-outline" title="这件事的来龙去脉" />
+            <View style={{ gap: 4 }}>
+              {thread.map((t, i) => {
+                const here = t.id === entry.id;
+                return (
+                  <Pressable key={t.id} disabled={here} onPress={() => { tap(); router.replace(`/entry/${t.id}`); }} style={({ pressed }) => ({ flexDirection: "row", gap: 12, opacity: pressed ? 0.7 : 1 })}>
+                    <View style={{ width: 3, borderRadius: 2, backgroundColor: here ? colors.primary : colors.border }} />
+                    <View style={{ flex: 1, paddingVertical: 8 }}>
+                      <Text style={ui.faint}>{i === 0 ? "最初" : "补充"} · {shortDate(t.createdAt)}{here ? " · 你在这里" : ""}</Text>
+                      <Text style={{ fontSize: 16, color: colors.text, marginTop: 3, fontWeight: here ? "700" : "400" }} numberOfLines={1}>{t.title ?? "整理中…"}</Text>
+                    </View>
+                    {here ? null : <Ionicons name="chevron-forward" size={15} color={colors.textFaint} style={{ alignSelf: "center" }} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+
         {entry.prompt ? (
           <Card style={{ marginTop: 14 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -210,7 +236,7 @@ export default function EntryScreen() {
         ) : null}
       </ScrollView>
 
-      {entry.followUp && entry.status === "done" ? (
+      {entry.followUp && !entry.followUpDone && entry.status === "done" ? (
         <View style={{ position: "absolute", left: 14, right: 14, bottom: insets.bottom + 80, flexDirection: "row", alignItems: "center", gap: 10 }}>
           <Mascot size={36} />
           <SpeechBubble style={{ flex: 1 }}>
@@ -218,7 +244,7 @@ export default function EntryScreen() {
           </SpeechBubble>
         </View>
       ) : null}
-      <BottomBar label="接着说" onWrite={() => router.push({ pathname: "/write", params: entry.followUp ? { prompt: entry.followUp, followUpOf: entry.id } : {} })} onRecord={talkMore} onChat={() => router.push("/chats")} />
+      <BottomBar label="补充这条" onWrite={() => router.push({ pathname: "/write", params: { threadOf: root, ...followUpParams } })} onRecord={talkMore} onChat={() => router.push("/chats")} />
 
       <Sheet visible={menu} onClose={() => setMenu(false)} button={null}>
         <View style={{ gap: 10 }}>

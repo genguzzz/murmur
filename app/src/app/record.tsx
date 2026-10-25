@@ -39,7 +39,7 @@ type Phase = "starting" | "recording" | "paused" | "saving" | "error";
 export default function Record() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ prompt?: string; followUpOf?: string; mode?: string }>();
+  const params = useLocalSearchParams<{ prompt?: string; followUpOf?: string; threadOf?: string; mode?: string }>();
   const todoMode = params.mode === "todo";
   const recorder = useAudioRecorder(OPTIONS);
   const state = useAudioRecorderState(recorder, 100);
@@ -140,7 +140,7 @@ export default function Record() {
         if (!dest.exists || dest.size === 0) throw new Error("录音文件保存失败");
         stored = name;
       }
-      createVoiceEntry({ id, audioFile: stored, durationSec, waveform: compactWaveform(levels.current), prompt: params.prompt, followUpOf: params.followUpOf, ...(todoMode ? { mode: "todo" as const } : {}) });
+      createVoiceEntry({ id, audioFile: stored, durationSec, waveform: compactWaveform(levels.current), prompt: params.prompt, followUpOf: params.followUpOf, threadId: params.threadOf, ...(todoMode ? { mode: "todo" as const } : {}) });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       void endLiveRecording(true);
       router.replace({ pathname: "/processing", params: { id } });
@@ -180,7 +180,7 @@ export default function Record() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.primarySoft, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20, paddingHorizontal: 28 }}>
       <View style={{ alignItems: "center" }}>
-        <Bubble text={params.prompt ?? (todoMode ? "要我记住什么事？顺便说下时间，我到点提醒你。" : opener)} mood={phase === "recording" ? "talk" : "smile"} />
+        <Bubble text={params.prompt ?? (params.threadOf ? "接着说，这件事有什么新进展？" : todoMode ? "要我记住什么事？顺便说下时间，我到点提醒你。" : opener)} mood={phase === "recording" ? "talk" : "smile"} />
       </View>
 
       <Text style={{ fontFamily: fonts.serif, fontSize: 64, color: colors.text, textAlign: "center", marginTop: 48, fontVariant: ["tabular-nums"] }}>

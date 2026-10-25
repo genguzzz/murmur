@@ -9,6 +9,7 @@ import { config } from "./config.ts";
 import { transcribe, UpstreamError } from "./groq.ts";
 import { analyzeEntry, chat, insightsFor, RefusalError, semanticSearch } from "./claude.ts";
 import { briefFor, detectIntent } from "./todos.ts";
+import { AgentRequest, runAgent, type AgentEvent } from "./agent.ts";
 import { publishIpa, PublishConflict } from "./publish.ts";
 import { listUpdates, manifestResponse, storeUpdate } from "./updates.ts";
 
@@ -201,6 +202,34 @@ app.post("/v1/brief", async (req) => {
   const { brief, meta } = await briefFor(body);
   req.log.info({ claude: meta, todos: body.todos.length, entries: body.entries.length }, "brief");
   return brief;
+});
+
+// The agent (capture from Home, or a chat turn). Streams NDJSON: step/route/text events,
+// then one done (or error) line. Errors after the stream starts can't change the status,
+// so they're sent as an error event.
+app.post("/v1/agent", async (req, reply) => {
+  const body = AgentRequest.parse(req.body);
+  reply.hijack();
+  const res = reply.raw;
+  res.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-cache", "x-accel-buffering": "no", "x-request-id": req.id });
+  const send = (ev: AgentEvent) => {
+    if (!res.writableEnded) res.write(`${JSON.stringify(ev)}\n`);
+  };
+  // Keep proxies from closing a quiet connection while the model thinks.
+  const ping = setInterval(() => res.write("\n"), 15_000);
+  try {
+    const { result, meta } = await runAgent(body, send);
+    send({ t: "done", result: { ...result } });
+    req.log.info({ agent: meta, mode: body.mode, hint: body.hint, route: result.route, ops: result.ops.map((o) => o.op), todos: body.todos.length, entries: body.entries.length, turns: body.messages.length }, "agent");
+  } catch (err) {
+    const e = err as { message?: string; status?: number };
+    const code = err instanceof RefusalError ? "refused" : err instanceof Anthropic.RateLimitError ? "claude_rate_limited" : err instanceof Anthropic.APIError ? "claude_error" : "internal";
+    req.log.error({ err: e.message, status: e.status, mode: body.mode }, "agent failed");
+    send({ t: "error", code, message: String(e.message ?? err).slice(0, 300) });
+  } finally {
+    clearInterval(ping);
+    res.end();
+  }
 });
 
 // Usage events (埋点) from the app: content-free names + small props, one JSONL file per day.

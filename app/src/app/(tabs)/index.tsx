@@ -84,11 +84,14 @@ export default function Home() {
         ) : null}
 
         {inbox.length ? (
-          <Card style={{ marginTop: 18, flexDirection: "row", alignItems: "center", gap: 10, borderColor: colors.primary }} onPress={() => go(`/confirm/${inbox[0].id}`)}>
-            <Ionicons name="mail-unread-outline" size={19} color={colors.primary} />
-            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }} numberOfLines={1}>
-              {inbox.length > 1 ? `${inbox.length} 条语音里有待办等你确认` : `“${inbox[0].text}”里有待办等你确认`}
-            </Text>
+          <Card style={{ marginTop: 18, flexDirection: "row", alignItems: "center", gap: 10, borderColor: colors.primary }} onPress={() => go("/pending")}>
+            <Ionicons name="file-tray-outline" size={19} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
+                {inbox.length > 1 ? `${inbox.length} 条录音等你确认` : inbox[0].kind === "unclear" ? (inbox[0].title ?? "有一条录音等你确认") : "有待办等你确认"}
+              </Text>
+              <Text style={[ui.faint, { marginTop: 2 }]} numberOfLines={1}>“{inbox[0].text}”</Text>
+            </View>
             <Ionicons name="chevron-forward" size={16} color={colors.primary} />
           </Card>
         ) : null}
@@ -120,7 +123,7 @@ export default function Home() {
               <EntryCard entry={latest} onPress={() => go(`/entry/${latest.id}`)} />
             ) : (
               <Card muted>
-                <Text style={ui.body}>还没有记录。点下面中间的麦克风，随便说点什么；说「提醒我…」会变成待办。</Text>
+                <Text style={ui.body}>还没有记录。点下面的「录一段」随便说点什么：日记会被整理好，「提醒我…」会变成待办，问我问题会直接进对话。</Text>
               </Card>
             )}
           </>

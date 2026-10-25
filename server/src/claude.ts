@@ -4,7 +4,7 @@ import { config } from "./config.ts";
 import { upstreamFetch } from "./upstream.ts";
 
 // ANTHROPIC_API_KEY is read from the environment by the SDK.
-const client = new Anthropic({ maxRetries: 2, timeout: 120_000, fetch: upstreamFetch });
+export const client = new Anthropic({ maxRetries: 2, timeout: 120_000, fetch: upstreamFetch });
 
 type Effort = "low" | "medium" | "high";
 
@@ -123,12 +123,17 @@ export async function analyzeEntry(input: {
   text: string;
   prompt?: string;
   recent: { date: string; title: string; summary: string }[];
+  // The earlier entry this memo adds to ("补充"/follow-up answer): title it as the update.
+  thread?: { date: string; title: string; summary: string };
 }): Promise<{ analysis: Analysis; meta: ClaudeMeta }> {
   const recent = input.recent.length
     ? input.recent.map((r) => `- ${r.date}《${r.title}》${r.summary}`).join("\n")
     : "（暂无）";
   const content =
     `<recent_entries>\n${recent}\n</recent_entries>\n\n` +
+    (input.thread
+      ? `<continues_entry>${input.thread.date}《${input.thread.title}》${input.thread.summary}</continues_entry>\n这段话是对上面那条记录的补充或后续：标题写这次新增的内容（如『新增最大回撤清仓规则』），摘要和洞察说明它和原来那条的关系。\n\n`
+      : "") +
     (input.prompt ? `<prompt_user_answered>${input.prompt}</prompt_user_answered>\n\n` : "") +
     `<transcript>\n${input.text}\n</transcript>`;
   const { text, meta } = await call({

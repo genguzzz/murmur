@@ -8,17 +8,17 @@ import { colors, fonts, radius } from "@/lib/theme";
 
 export default function Write() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ prompt?: string; followUpOf?: string }>();
+  const params = useLocalSearchParams<{ prompt?: string; followUpOf?: string; threadOf?: string }>();
   const [text, setText] = useState("");
 
   const save = () => {
-    const entry = createTextEntry(text.trim(), { prompt: params.prompt, followUpOf: params.followUpOf });
+    const entry = createTextEntry(text.trim(), { prompt: params.prompt, followUpOf: params.followUpOf, threadId: params.threadOf });
     router.replace({ pathname: "/processing", params: { id: entry.id } });
   };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <TopBar title="写下一个想法" />
+      <TopBar title={params.threadOf ? "补充这条记录" : "写下一个想法"} />
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
           <Mascot size={44} />

@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { Bubble, Card, PillButton, Screen, SectionTitle, TopBar, styles as ui } from "@/components/ui";
 import { describeError } from "@/lib/api";
 import { logger } from "@/lib/log";
-import { refreshInsights, useStore } from "@/lib/store";
+import { insightsStale, refreshInsights, useInsightsRefreshing, useStore } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
 import { colors, fonts } from "@/lib/theme";
 
@@ -12,38 +12,48 @@ const log = logger("insights");
 export default function Insights() {
   const cache = useStore((s) => s.insights);
   const doneCount = useStore((s) => s.entries.filter((e) => e.status === "done").length);
-  const [loading, setLoading] = useState(false);
+  const hasToken = useStore((s) => !!s.settings.token);
+  const loading = useInsightsRefreshing();
   const [error, setError] = useState<string | null>(null);
 
-  const run = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await refreshInsights();
-    } catch (e) {
-      log.error("refresh failed", e);
-      setError(describeError(e));
-    } finally {
-      setLoading(false);
-    }
+  const run = () => {
+    refreshInsights().then(
+      () => setError(null),
+      (e) => {
+        log.error("refresh failed", e);
+        setError(describeError(e));
+      },
+    );
   };
 
-  const stale = cache && cache.entryCount !== doneCount;
+  // Opening the page with new entries since the last analysis refreshes it by itself.
+  useEffect(() => {
+    if (hasToken && doneCount >= 2 && insightsStale()) run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const stale = !!cache && insightsStale();
 
   return (
     <Screen>
       <TopBar title="规律与洞察" />
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        {loading ? (
+          <Card muted style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[ui.body, { flex: 1 }]}>{cache ? `有新记录，正在根据全部 ${doneCount} 条重新看一遍…` : `正在读你的 ${doneCount} 条记录…`}</Text>
+          </Card>
+        ) : null}
         {!cache ? (
           <View style={{ alignItems: "center", marginTop: 40, gap: 24 }}>
             <Bubble text={doneCount >= 2 ? "让我把你说过的话串起来看看" : "多记几条，规律才会出现"} />
           </View>
         ) : (
-          <>
-            <Text style={ui.faint}>基于 {cache.entryCount} 条记录 · {timeAgo(cache.at)}</Text>
+          <View style={{ opacity: loading ? 0.5 : 1 }}>
+            <Text style={ui.faint}>基于 {cache.entryCount} 条记录 · {timeAgo(cache.at)}{stale && !loading ? ` · 之后又多了 ${Math.max(0, doneCount - cache.entryCount)} 条` : ""}</Text>
             <Text style={{ fontFamily: fonts.serif, fontSize: 26, color: colors.text, marginTop: 8 }}>{cache.data.headline}</Text>
             <Text style={{ fontSize: 16, lineHeight: 25, color: colors.text, marginTop: 12 }}>{cache.data.body}</Text>
-            <SectionTitle icon="git-network-outline" title="反复出现的" />
+            <SectionTitle icon="git-network-outline" title="正在形成的模式" />
             <View style={{ gap: 10 }}>
               {cache.data.patterns.map((p) => (
                 <Card key={p.title}>
@@ -67,7 +77,7 @@ export default function Insights() {
             ) : null}
             {cache.data.recurring?.length ? (
               <>
-                <SectionTitle icon="alert-circle-outline" title="反复出现的事" />
+                <SectionTitle icon="alert-circle-outline" title="反复出现的担忧" />
                 <View style={{ gap: 10 }}>
                   {cache.data.recurring.map((r) => (
                     <Card key={r.title}>
@@ -80,13 +90,13 @@ export default function Insights() {
             ) : null}
             <SectionTitle icon="compass-outline" title="接下来可以想想" />
             <Card muted><Text style={[ui.body, { color: colors.text }]}>{cache.data.suggestion}</Text></Card>
-          </>
+          </View>
         )}
         {error ? <Text style={{ color: colors.danger, marginTop: 16, textAlign: "center" }}>{error}</Text> : null}
         <PillButton
           label={cache ? (stale ? "有新记录，重新分析" : "重新分析") : "开始分析"}
           icon="sparkles"
-          onPress={() => void run()}
+          onPress={run}
           loading={loading}
           disabled={doneCount < 1}
           style={{ marginTop: 28 }}

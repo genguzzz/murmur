@@ -1,10 +1,12 @@
-import { useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Bubble, Card, EmptyState, TopBar } from "@/components/ui";
-import { sendChat, sortedEntries, useStore } from "@/lib/store";
+import { StepList } from "@/components/Activity";
+import { Bubble, Card, EmptyState, TopBar, tap, toast } from "@/components/ui";
+import { sendChat, sortedEntries, useStore, type ChatMessage } from "@/lib/store";
+import { runUndo, useCanUndo, useRun, watchRun } from "@/lib/runs";
 import { colors, radius } from "@/lib/theme";
 
 export default function ChatScreen() {
@@ -13,28 +15,30 @@ export default function ChatScreen() {
   const chat = useStore((s) => s.chats.find((c) => c.id === id));
   const rawEntries = useStore((s) => s.entries);
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
   const list = useRef<FlatList>(null);
+  const run = useRun(id);
+  const sending = !!chat?.messages.some((m) => m.pending);
+
+  useEffect(() => watchRun(id), [id]);
 
   // Starter cards built from recent entries, like "ask about a past entry".
   const starters = useMemo(() => {
     const recent = sortedEntries(rawEntries).filter((e) => e.status === "done").slice(0, 3);
     return [
-      ...recent.map((e) => `聊聊「${e.title}」这件事`),
+      ...recent.slice(0, 2).map((e) => `聊聊「${e.title}」这件事`),
       "最近我反复提到的是什么？",
+      "帮我把这周的待办理一理",
       "帮我回顾一下这周",
-    ].slice(0, 4);
+    ].slice(0, 5);
   }, [rawEntries]);
 
   if (!chat) return (<><TopBar /><EmptyState text="对话不存在" /></>);
 
-  const send = async (content: string) => {
+  const send = (content: string) => {
     const c = content.trim();
     if (!c || sending) return;
     setText("");
-    setSending(true);
-    await sendChat(chat.id, c);
-    setSending(false);
+    void sendChat(chat.id, c);
     setTimeout(() => list.current?.scrollToEnd({ animated: true }), 50);
   };
 
@@ -46,12 +50,12 @@ export default function ChatScreen() {
           <View style={{ alignItems: "center", marginBottom: 28 }}>
             <Bubble text="想聊点什么？" />
             <Text style={{ color: colors.textSoft, marginTop: 14, textAlign: "center", paddingHorizontal: 40, lineHeight: 20 }}>
-              聊一件新的事，或者问问过去的某条记录。
+              问问过去的记录，让我改改待办，或者随便问点什么。
             </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 18, gap: 10 }} style={{ flexGrow: 0 }}>
             {starters.map((s) => (
-              <Card key={s} style={{ width: 160 }} onPress={() => void send(s)}>
+              <Card key={s} style={{ width: 160 }} onPress={() => send(s)}>
                 <Text style={{ color: colors.text, lineHeight: 20 }}>{s}</Text>
               </Card>
             ))}
@@ -64,37 +68,107 @@ export default function ChatScreen() {
           keyExtractor={(_, i) => String(i)}
           onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
           contentContainerStyle={{ padding: 16, gap: 10 }}
-          renderItem={({ item }) => (
-            <View
-              style={{
-                alignSelf: item.role === "user" ? "flex-end" : "flex-start",
-                maxWidth: "85%",
-                backgroundColor: item.role === "user" ? colors.primary : item.error ? colors.danger + "18" : colors.card,
-                borderRadius: 18,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-              }}
-            >
-              <Text selectable style={{ color: item.role === "user" ? colors.onPrimary : item.error ? colors.danger : colors.text, fontSize: 15, lineHeight: 22 }}>{item.content}</Text>
-            </View>
-          )}
-          ListFooterComponent={sending ? <ActivityIndicator style={{ alignSelf: "flex-start", margin: 8 }} color={colors.primary} /> : undefined}
+          renderItem={({ item }) => <MessageView item={item} steps={item.pending && run?.status === "running" ? run.steps : undefined} />}
         />
       )}
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 14, paddingTop: 8, paddingBottom: insets.bottom + 8 }}>
         <TextInput
           value={text}
           onChangeText={setText}
-          placeholder="说点什么"
+          placeholder={sending ? "正在回答…" : "说点什么"}
           placeholderTextColor={colors.textFaint}
           multiline
           style={{ flex: 1, maxHeight: 120, minHeight: 44, backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border }}
         />
-        <Pressable onPress={() => void send(text)} disabled={!text.trim() || sending} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: text.trim() && !sending ? colors.primary : colors.border, alignItems: "center", justifyContent: "center" }}>
+        <Pressable accessibilityLabel="发送" onPress={() => send(text)} disabled={!text.trim() || sending} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: text.trim() && !sending ? colors.primary : colors.border, alignItems: "center", justifyContent: "center" }}>
           <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
         </Pressable>
       </View>
       <Text style={{ textAlign: "center", fontSize: 11, color: colors.textFaint, paddingBottom: insets.bottom ? 0 : 6, marginTop: -4 }}>AI 会出错，重要的事以你自己的记录为准。</Text>
     </KeyboardAvoidingView>
+  );
+}
+
+function MessageView({ item, steps }: { item: ChatMessage; steps?: { id: string; label: string; state: "run" | "done" | "fail" }[] }) {
+  if (item.role === "user") {
+    return (
+      <View style={{ alignSelf: "flex-end", maxWidth: "85%", backgroundColor: colors.primary, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 }}>
+        {item.voice ? <Ionicons name="mic" size={12} color={colors.onPrimary} style={{ opacity: 0.7, marginBottom: 2 }} /> : null}
+        <Text selectable style={{ color: colors.onPrimary, fontSize: 15, lineHeight: 22 }}>{item.content}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ alignSelf: "flex-start", maxWidth: "88%", gap: 8 }}>
+      {steps?.length ? (
+        <View style={{ paddingHorizontal: 4 }}>
+          <StepList steps={steps} compact />
+        </View>
+      ) : null}
+      {item.content || !item.pending ? (
+        <View style={{ backgroundColor: item.error ? colors.danger + "18" : colors.card, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 }}>
+          <RichText text={item.content + (item.pending ? " ▍" : "")} color={item.error ? colors.danger : colors.text} />
+        </View>
+      ) : null}
+      {item.ops?.length ? <OpsCard lines={item.ops} undoId={item.undoId} /> : null}
+    </View>
+  );
+}
+
+// What the agent changed this turn, with undo while it's still possible.
+function OpsCard({ lines, undoId }: { lines: string[]; undoId?: string }) {
+  const can = useCanUndo(undoId);
+  const [undone, setUndone] = useState(false);
+  return (
+    <View style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.cardMuted, padding: 12, gap: 6 }}>
+      {lines.map((l) => (
+        <View key={l} style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+          <Ionicons name={undone ? "arrow-undo-outline" : "checkmark-circle-outline"} size={15} color={undone ? colors.textFaint : colors.primary} />
+          <Text style={{ flex: 1, fontSize: 13.5, color: undone ? colors.textFaint : colors.text, textDecorationLine: undone ? "line-through" : "none" }}>{l}</Text>
+        </View>
+      ))}
+      {can ? (
+        <Pressable hitSlop={8} onPress={() => { tap(); if (runUndo(undoId!)) { setUndone(true); toast("已撤销", "改动都恢复原样了"); } }} style={{ alignSelf: "flex-start", marginTop: 2 }}>
+          <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13.5 }}>撤销这些改动</Text>
+        </Pressable>
+      ) : undone ? (
+        <Text style={{ fontSize: 12.5, color: colors.textFaint }}>已撤销</Text>
+      ) : null}
+    </View>
+  );
+}
+
+// Just enough markdown for replies: **bold**, "- " bullets, numbered lines, # headings.
+function RichText({ text, color }: { text: string; color: string }) {
+  const lines = text.split("\n");
+  return (
+    <View style={{ gap: 4 }}>
+      {lines.map((raw, i) => {
+        if (!raw.trim()) return <View key={i} style={{ height: 4 }} />;
+        const bullet = /^\s*[-•*]\s+/.exec(raw);
+        const num = /^\s*(\d+)[.、)]\s+/.exec(raw);
+        const heading = /^#{1,4}\s+/.exec(raw);
+        const body = raw.slice((bullet ?? num ?? heading)?.[0].length ?? 0);
+        const inline = <Inline text={body} color={color} bold={!!heading} />;
+        if (bullet || num) {
+          return (
+            <View key={i} style={{ flexDirection: "row", gap: 6 }}>
+              <Text style={{ color, fontSize: 15, lineHeight: 22 }}>{bullet ? "•" : `${num![1]}.`}</Text>
+              <View style={{ flex: 1 }}>{inline}</View>
+            </View>
+          );
+        }
+        return <View key={i}>{inline}</View>;
+      })}
+    </View>
+  );
+}
+
+function Inline({ text, color, bold }: { text: string; color: string; bold?: boolean }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  return (
+    <Text selectable style={{ color, fontSize: 15, lineHeight: 22, fontWeight: bold ? "700" : "400" }}>
+      {parts.map((p, i) => (p.startsWith("**") && p.endsWith("**") ? <Text key={i} style={{ fontWeight: "700" }}>{p.slice(2, -2)}</Text> : p))}
+    </Text>
   );
 }

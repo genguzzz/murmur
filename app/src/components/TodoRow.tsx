@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { dueLabel, isOverdue, REPEAT_LABEL, type Todo } from "@/lib/todo";
+import { dueLabel, isOverdue, REPEAT_LABEL, type DraftOption, type Todo } from "@/lib/todo";
 import { colors } from "@/lib/theme";
 
 export function Checkbox({ checked, high, onPress, size = 24 }: { checked: boolean; high?: boolean; onPress: () => void; size?: number }) {
@@ -57,7 +57,7 @@ export function TodoMeta({ todo, now }: { todo: Todo; now: Date }) {
   );
 }
 
-export function TodoRow({ todo, now, onToggle, onPress, highlight }: { todo: Todo; now: Date; onToggle: () => void; onPress: () => void; highlight?: boolean }) {
+export function TodoRow({ todo, now, onToggle, onPress, onAnswer, highlight }: { todo: Todo; now: Date; onToggle: () => void; onPress: () => void; onAnswer?: (o: DraftOption | null) => void; highlight?: boolean }) {
   const done = !!todo.doneAt;
   return (
     <Pressable
@@ -77,7 +77,31 @@ export function TodoRow({ todo, now, onToggle, onPress, highlight }: { todo: Tod
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 16, lineHeight: 22, color: done ? colors.textFaint : colors.text, textDecorationLine: done ? "line-through" : "none" }}>{todo.title}</Text>
         {done ? null : <TodoMeta todo={todo} now={now} />}
+        {!done && todo.ask && onAnswer ? <AskChips ask={todo.ask} onAnswer={onAnswer} /> : null}
       </View>
     </Pressable>
+  );
+}
+
+// The agent's open question about when ("要我什么时候提醒你？"), answered in one tap.
+function AskChips({ ask, onAnswer }: { ask: NonNullable<Todo["ask"]>; onAnswer: (o: DraftOption | null) => void }) {
+  const chip = (label: string, onPress: () => void, soft?: boolean) => (
+    <Pressable
+      key={label}
+      hitSlop={4}
+      onPress={() => { void Haptics.selectionAsync(); onPress(); }}
+      style={({ pressed }) => ({ paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, backgroundColor: soft ? "transparent" : colors.primarySoft, borderWidth: 1, borderColor: soft ? colors.border : colors.primary + "44", opacity: pressed ? 0.7 : 1 })}
+    >
+      <Text style={{ fontSize: 12.5, fontWeight: "600", color: soft ? colors.textSoft : colors.primary }}>{label}</Text>
+    </Pressable>
+  );
+  return (
+    <View style={{ marginTop: 8, gap: 6 }}>
+      <Text style={{ fontSize: 12.5, color: colors.textSoft }}>{ask.question}</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {ask.options.map((o) => chip(o.label, () => onAnswer(o)))}
+        {chip("不设时间", () => onAnswer(null), true)}
+      </View>
+    </View>
   );
 }
