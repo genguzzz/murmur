@@ -31,7 +31,7 @@ import { flushEvents } from "@/lib/track";
 import { colors, radius } from "@/lib/theme";
 
 const ACCESS_COLOR: Record<Access, string> = { granted: "#5E9A55", limited: "#D9A15B", ask: "#A99683", denied: "#C2574A" };
-const ACCESS_LABEL: Record<Access, string> = { granted: "已允许", limited: "部分", ask: "未询问", denied: "已拒绝" };
+const ACCESS_LABEL: Record<Access, string> = { granted: "已允许", limited: "部分允许", ask: "未询问", denied: "已拒绝" };
 
 // Debug page: proves every native capability in this binary works, so features
 // built on them can ship over the air. Each test goes through the lib/device wrappers.
@@ -65,14 +65,14 @@ export default function Diagnostics() {
 
   const tests: [string, () => Promise<string | null>][] = [
     ["拍照", async () => { const p = await takePhoto(); if (p) setPhoto(p.uri); return p && `${p.width}×${p.height} ${p.size ? Math.round(p.size / 1024) + "KB" : ""}`; }],
-    ["选照片", async () => { const ps = await pickPhotos({ max: 3 }); if (ps?.[0]) setPhoto(ps[0].uri); return ps && `${ps.length} 张${ps[0]?.location ? " · 带位置" : ""}${ps[0]?.takenAt ? ` · ${ps[0].takenAt}` : ""}`; }],
-    ["压缩照片", async () => { if (!photo) return "先拍照或选一张"; const c = await compressPhoto(photo, { maxSide: 1200 }); setPhoto(c.uri); return `${c.width}×${c.height} ${Math.round((c.size ?? 0) / 1024)}KB`; }],
+    ["选照片", async () => { const ps = await pickPhotos({ max: 3 }); if (ps?.[0]) setPhoto(ps[0].uri); return ps && `${ps.length} 张${ps[0]?.location ? " · 含位置" : ""}${ps[0]?.takenAt ? ` · ${ps[0].takenAt}` : ""}`; }],
+    ["压缩照片", async () => { if (!photo) return "请先拍照或选择照片"; const c = await compressPhoto(photo, { maxSide: 1200 }); setPhoto(c.uri); return `${c.width}×${c.height} ${Math.round((c.size ?? 0) / 1024)}KB`; }],
     ["定位", async () => { const p = await currentPlace({ reason: "测试定位能力" }); return `${p.name || "（无地名）"} ${p.latitude.toFixed(4)},${p.longitude.toFixed(4)} ±${Math.round(p.accuracy ?? 0)}m`; }],
-    ["近两天日程", async () => { const ev = await upcomingEvents({ days: 2 }); return `${ev.length} 个${ev[0] ? `，最近：${ev[0].title}` : ""}`; }],
+    ["近两天日程", async () => { const ev = await upcomingEvents({ days: 2 }); return `${ev.length} 个${ev[0] ? `，最近一项：${ev[0].title}` : ""}`; }],
     ["写入提醒事项", async () => { const id = await addReminder({ title: "Murmur 能力自检（会自动删除）", due: new Date(Date.now() + 3600_000) }); await deleteReminder(id); return "写入并删除成功"; }],
     ["选联系人", async () => { const c = await pickContact(); return c && `${c.name} · ${c.phones.length} 个号码`; }],
     ["选文件", async () => { const f = await pickFiles(); return f && `${f[0].name} ${f[0].size ? Math.round(f[0].size / 1024) + "KB" : ""}`; }],
-    ["朗读", async () => { await speak("你好，我是 Murmur。"); return "播放完成"; }],
+    ["朗读", async () => { await speak("这是 Murmur 朗读测试。"); return "播放完成"; }],
     ["网络", async () => (await isOnline()) ? "在线" : "离线"],
     ["地区", async () => { const l = locale(); return `${l.language} · ${l.timeZone} · ${l.uses24h ? "24" : "12"} 小时制`; }],
     ["后台刷新", async () => { const s = await backgroundStatus(); return `${s.available ? "可用" : "系统未开启"} · ${s.registered ? "已注册" : "未注册"}`; }],
@@ -147,7 +147,7 @@ export default function Diagnostics() {
           </View>
           {live || liveText ? (
             <Card muted style={{ marginTop: 10 }}>
-              <Text style={{ color: colors.text, fontSize: 15, lineHeight: 22 }}>{liveText || "说点什么…"}</Text>
+              <Text style={{ color: colors.text, fontSize: 15, lineHeight: 22 }}>{liveText || "请开始说话…"}</Text>
             </Card>
           ) : null}
           {photo ? <Image source={{ uri: photo }} style={{ width: "100%", height: 200, borderRadius: radius.md, marginTop: 10 }} contentFit="cover" /> : null}

@@ -9,8 +9,8 @@ import { instantOf, nowWall } from "./zone";
 
 const log = logger("notify");
 
-export const MORNING_PROMPTS = ["今天最想做成的一件事是什么？", "醒来时脑子里第一个念头是什么？", "今天想用什么状态度过？", "有什么在等着你，让你期待或担心？"];
-export const EVENING_PROMPTS = ["今天有什么值得记住的瞬间？", "今天哪件事让你多想了一下？", "现在的心情像什么天气？", "今天你对自己满意的一点是什么？"];
+export const MORNING_PROMPTS = ["今天最想做成的一件事是什么？", "醒来后想到的第一件事是什么？", "今天希望以怎样的状态度过？", "今天有什么让你期待或担心的事？"];
+export const EVENING_PROMPTS = ["今天有什么值得记住的瞬间？", "今天哪件事让你思考得最多？", "此刻的心情怎么样？", "今天你对自己满意的一点是什么？"];
 
 const ID = { morning: "checkin-morning", evening: "checkin-evening", remember: "remember-followup" } as const;
 const enabled = Platform.OS !== "web";
@@ -97,7 +97,7 @@ export async function scheduleRemember(prefs: CheckinPrefs, entry: { id: string;
     const at = instantOf(w);
     await Notifications.scheduleNotificationAsync({
       identifier: ID.remember,
-      content: { title: `还记得「${entry.title ?? "昨天那条记录"}」吗？`, body: entry.followUp, data: { route: "/record", prompt: entry.followUp, followUpOf: entry.id } },
+      content: { title: `回顾「${entry.title ?? "昨天的记录"}」`, body: entry.followUp, data: { route: "/record", prompt: entry.followUp, followUpOf: entry.id } },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at },
     });
     log.info("remember scheduled", { id: entry.id, at: at.toISOString() });
@@ -157,7 +157,7 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
       const { hour, minute } = local;
       const content: Notifications.NotificationContentInput = {
         title: t.title,
-        body: t.time ? (t.note || "到时间了") : (t.note || "今天要做的事"),
+        body: t.time ? (t.note || "已到提醒时间") : (t.note || "今天的待办"),
         sound: "default",
         data: { route: "/todos", todoId: t.id },
       };

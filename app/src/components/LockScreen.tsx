@@ -40,11 +40,11 @@ export function LockScreen() {
     <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.bg, paddingTop: insets.top, paddingBottom: insets.bottom + 10, zIndex: 100 }]}>
       <PinPad
         title="输入密码"
-        bubble="欢迎回来"
+        bubble="请输入密码解锁"
         onComplete={onComplete}
         biometric={useBio ? kind : null}
         onBiometric={() => void tryBiometric()}
-        footer={useBio && kind ? `点 ${kind === "faceid" ? "Face ID" : "Touch ID"} 图标用${kind === "faceid" ? "面容" : "指纹"}解锁` : undefined}
+        footer={useBio && kind ? `点按 ${kind === "faceid" ? "Face ID" : "Touch ID"} 图标，使用${kind === "faceid" ? "面容" : "指纹"}解锁` : undefined}
       />
     </View>
   );

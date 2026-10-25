@@ -8,9 +8,9 @@ import { track } from "../track";
 type Item = QuickActions.Action & { params: { route: string; mode?: string } };
 
 const ITEMS: Item[] = [
-  { id: "record", title: "录一段", icon: "symbol:mic.fill", params: { route: "/record" } },
-  { id: "todo", title: "记待办", icon: "symbol:checklist", params: { route: "/record", mode: "todo" } },
-  { id: "write", title: "写一段", icon: "symbol:square.and.pencil", params: { route: "/write" } },
+  { id: "record", title: "开始录音", icon: "symbol:mic.fill", params: { route: "/record" } },
+  { id: "todo", title: "添加待办", icon: "symbol:checklist", params: { route: "/record", mode: "todo" } },
+  { id: "write", title: "写记录", icon: "symbol:square.and.pencil", params: { route: "/write" } },
 ];
 
 export function installQuickActions(go: (route: string, params: Record<string, string>) => void): () => void {

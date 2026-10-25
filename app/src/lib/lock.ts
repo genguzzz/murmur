@@ -102,7 +102,7 @@ export async function authenticateBiometric(): Promise<boolean> {
   try {
     const r = await LocalAuthentication.authenticateAsync({
       promptMessage: "解锁 Murmur",
-      cancelLabel: "用密码",
+      cancelLabel: "使用密码",
       disableDeviceFallback: true,
       fallbackLabel: "",
     });

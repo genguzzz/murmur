@@ -45,8 +45,8 @@ export default function Todos() {
       return;
     }
     const next = completeTodo(t.id);
-    if (next) toast("完成了", `下次：${dayLabel(next)}${t.time ? ` ${t.time}` : ""}`);
-    else toast("完成了", t.title, { label: "撤销", onPress: () => reopenTodo(t.id) });
+    if (next) toast("已完成", `下次：${dayLabel(next)}${t.time ? ` ${t.time}` : ""}`);
+    else toast("已完成", t.title, { label: "撤销", onPress: () => reopenTodo(t.id) });
   };
 
   const submit = async () => {
@@ -63,7 +63,7 @@ export default function Todos() {
       log.warn("quick add parse failed", e);
       addTodos([{ title: text, note: "", date: "", time: "", repeat: "none", priority: "normal" }], "text");
       setDraft("");
-      toast("先记下了", `时间没识别（${describeError(e)}），点开可以补上`);
+      toast("已添加待办", `未能识别时间（${describeError(e)}），可点开补充`);
     } finally {
       setBusy(false);
     }
@@ -75,11 +75,11 @@ export default function Todos() {
       return;
     }
     updateTodo(t.id, { date: o.date, ...(o.time ? { time: o.time } : { time: undefined }), ask: undefined });
-    toast("定好了", `${t.title} · ${dueLabel({ date: o.date, time: o.time || undefined })}`);
+    toast("已设置提醒时间", `${t.title} · ${dueLabel({ date: o.date, time: o.time || undefined })}`);
     void ensureReminderPermission();
   };
 
-  const summary = openCount === 0 ? "没有待办，轻松一下" : todayCount ? `今天 ${todayCount} 件${overdue ? `，其中 ${overdue} 件已逾期` : ""}` : `共 ${openCount} 件，今天没有要做的`;
+  const summary = openCount === 0 ? "没有待办事项" : todayCount ? `今天 ${todayCount} 件${overdue ? `，其中 ${overdue} 件已逾期` : ""}` : `共 ${openCount} 件，今天没有到期事项`;
 
   return (
     <Screen>
@@ -99,7 +99,7 @@ export default function Todos() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>
-                  {p.drafts.length ? `${p.drafts.length} 件待办等你确认` : "有事项可能已经做完"}
+                  {p.drafts.length ? `${p.drafts.length} 件待办待确认` : "有事项可能已完成"}
                 </Text>
                 <Text style={{ fontSize: 13, color: colors.textSoft, marginTop: 2 }} numberOfLines={1}>“{p.text}”</Text>
               </View>
@@ -116,7 +116,7 @@ export default function Todos() {
               onSubmitEditing={() => void submit()}
               returnKeyType="done"
               editable={!busy}
-              placeholder="加个待办，如「明天下午三点开会」"
+              placeholder="添加待办，如「明天下午三点开会」"
               placeholderTextColor={colors.textFaint}
               style={{ flex: 1, fontSize: 16, color: colors.text, height: 54 }}
             />
@@ -138,13 +138,13 @@ export default function Todos() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                 <Mascot size={64} />
                 <SpeechBubble style={{ maxWidth: 230 }}>
-                  <Text style={{ fontSize: 15, lineHeight: 22, color: colors.text }}>说一句「提醒我…」，我帮你记着，到点叫你。</Text>
+                  <Text style={{ fontSize: 15, lineHeight: 22, color: colors.text }}>说「提醒我…」即可添加待办，到时间会提醒你。</Text>
                 </SpeechBubble>
               </View>
               <View style={{ gap: 8, alignSelf: "stretch" }}>
                 {EXAMPLES.map((e) => (
                   <Pressable key={e} onPress={() => { tap(); setDraft(e); }} style={{ paddingVertical: 10, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: 1, borderStyle: "dashed", borderColor: colors.border }}>
-                    <Text style={{ color: colors.textSoft, fontSize: 14 }}>试试：{e}</Text>
+                    <Text style={{ color: colors.textSoft, fontSize: 14 }}>例如：{e}</Text>
                   </Pressable>
                 ))}
               </View>

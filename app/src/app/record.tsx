@@ -59,7 +59,7 @@ export default function Record() {
           setPhase("error");
           Alert.alert("需要麦克风权限", "请在系统设置里允许 Murmur 使用麦克风。", [
             { text: "取消", onPress: () => router.back() },
-            { text: "去设置", onPress: () => { void Linking.openSettings(); router.back(); } },
+            { text: "打开设置", onPress: () => { void Linking.openSettings(); router.back(); } },
           ]);
           return;
         }
@@ -115,7 +115,7 @@ export default function Record() {
   const save = async () => {
     const durationSec = state.durationMillis / 1000;
     if (durationSec < 1) {
-      Alert.alert("太短了", "多说几句再保存吧。");
+      Alert.alert("录音太短", "请录制更长的内容后再保存。");
       return;
     }
     setPhase("saving");
@@ -167,20 +167,20 @@ export default function Record() {
       router.back();
     };
     if (state.durationMillis > 5000) {
-      Alert.alert("放弃这段录音？", "录音会被删除。", [
-        { text: "继续录", style: "cancel" },
+      Alert.alert("放弃这段录音？", "录音将被删除。", [
+        { text: "继续录音", style: "cancel" },
         { text: "放弃", style: "destructive", onPress: () => void leave() },
       ]);
     } else void leave();
   };
 
   const level = meterLevel(state.metering);
-  const status = phase === "starting" ? "准备中…" : phase === "paused" ? "已暂停" : phase === "saving" ? "保存中…" : phase === "error" ? "出错了" : "正在听…";
+  const status = phase === "starting" ? "正在准备…" : phase === "paused" ? "已暂停" : phase === "saving" ? "正在保存…" : phase === "error" ? "录音出错" : "正在录音…";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.primarySoft, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 20, paddingHorizontal: 28 }}>
       <View style={{ alignItems: "center" }}>
-        <Bubble text={params.prompt ?? (params.threadOf ? "接着说，这件事有什么新进展？" : todoMode ? "要我记住什么事？顺便说下时间，我到点提醒你。" : opener)} mood={phase === "recording" ? "talk" : "smile"} />
+        <Bubble text={params.prompt ?? (params.threadOf ? "这件事有什么新进展？" : todoMode ? "需要提醒什么事？说出时间，到时会提醒你。" : opener)} mood={phase === "recording" ? "talk" : "smile"} />
       </View>
 
       <Text style={{ fontFamily: fonts.serif, fontSize: 64, color: colors.text, textAlign: "center", marginTop: 48, fontVariant: ["tabular-nums"] }}>
@@ -200,7 +200,7 @@ export default function Record() {
           <Ionicons name={phase === "paused" ? "mic" : "pause"} size={28} color={colors.primaryDark} />
         </Pressable>
       </View>
-      <PillButton label={todoMode ? "说完了" : "保存这条记录"} icon="checkmark" onPress={() => void save()} loading={phase === "saving"} disabled={phase === "starting" || phase === "error"} />
+      <PillButton label={todoMode ? "完成" : "保存记录"} icon="checkmark" onPress={() => void save()} loading={phase === "saving"} disabled={phase === "starting" || phase === "error"} />
       <Pressable onPress={cancel} style={{ alignSelf: "center", padding: 14 }}>
         <Text style={{ color: colors.textSoft, fontSize: 15 }}>取消</Text>
       </Pressable>

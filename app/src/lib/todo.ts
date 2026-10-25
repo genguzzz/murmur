@@ -167,7 +167,7 @@ export function groupTodos(list: Todo[], allDayTime: string, now = nowWall()): T
   }
   const anytime = open.filter((t) => !t.date);
   const out = [...sections.values()];
-  if (anytime.length) out.push({ key: "anytime", title: "随时", todos: anytime });
+  if (anytime.length) out.push({ key: "anytime", title: "未设日期", todos: anytime });
   return out;
 }
 

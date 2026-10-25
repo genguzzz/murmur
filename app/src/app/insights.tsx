@@ -41,16 +41,16 @@ export default function Insights() {
         {loading ? (
           <Card muted style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={[ui.body, { flex: 1 }]}>{cache ? `有新记录，正在根据全部 ${doneCount} 条重新看一遍…` : `正在读你的 ${doneCount} 条记录…`}</Text>
+            <Text style={[ui.body, { flex: 1 }]}>{cache ? `有新记录，正在重新分析全部 ${doneCount} 条记录…` : `正在分析 ${doneCount} 条记录…`}</Text>
           </Card>
         ) : null}
         {!cache ? (
           <View style={{ alignItems: "center", marginTop: 40, gap: 24 }}>
-            <Bubble text={doneCount >= 2 ? "让我把你说过的话串起来看看" : "多记几条，规律才会出现"} />
+            <Bubble text={doneCount >= 2 ? "分析全部记录之间的联系" : "记录达到 2 条后可以分析规律"} />
           </View>
         ) : (
           <View style={{ opacity: loading ? 0.5 : 1 }}>
-            <Text style={ui.faint}>基于 {cache.entryCount} 条记录 · {timeAgo(cache.at)}{stale && !loading ? ` · 之后又多了 ${Math.max(0, doneCount - cache.entryCount)} 条` : ""}</Text>
+            <Text style={ui.faint}>基于 {cache.entryCount} 条记录 · {timeAgo(cache.at)}{stale && !loading ? ` · 之后新增 ${Math.max(0, doneCount - cache.entryCount)} 条` : ""}</Text>
             <Text style={{ fontFamily: fonts.serif, fontSize: 26, color: colors.text, marginTop: 8 }}>{cache.data.headline}</Text>
             <Text style={{ fontSize: 16, lineHeight: 25, color: colors.text, marginTop: 12 }}>{cache.data.body}</Text>
             <SectionTitle icon="git-network-outline" title="正在形成的模式" />
@@ -88,7 +88,7 @@ export default function Insights() {
                 </View>
               </>
             ) : null}
-            <SectionTitle icon="compass-outline" title="接下来可以想想" />
+            <SectionTitle icon="compass-outline" title="下一步建议" />
             <Card muted><Text style={[ui.body, { color: colors.text }]}>{cache.data.suggestion}</Text></Card>
           </View>
         )}

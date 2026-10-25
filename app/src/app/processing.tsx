@@ -10,10 +10,10 @@ import { useRun, watchRun } from "@/lib/runs";
 import { colors } from "@/lib/theme";
 
 const LEAD: Record<string, string> = {
-  journal: "整理好了，带你去看看。",
-  chat: "这是个问题，去对话里聊。",
-  todo: "待办处理好了。",
-  pending: "没太听懂，先放进待确认。",
+  journal: "已整理完成。",
+  chat: "判断为提问，已转到对话。",
+  todo: "已添加到待办。",
+  pending: "未能判断这段内容的用途，已放入待确认。",
 };
 
 // Live view right after saving: the agent's steps as they happen. When it's done this
@@ -55,14 +55,14 @@ export default function Processing() {
   const failed = run?.status === "failed" || (!run && entry?.status === "failed");
   const step = run ? lastStep(run.steps) : undefined;
   const msg = failed
-    ? `出了点问题：${run?.error ?? entry?.error ?? ""}`
+    ? `处理失败：${run?.error ?? entry?.error ?? ""}`
     : finishedRoute
       ? LEAD[finishedRoute]
       : step?.state === "run"
         ? `${step.label}…`
         : entry?.status === "transcribing"
-          ? "收到了，正在转写这段话…"
-          : "正在想这段话该怎么处理…";
+          ? "正在转写录音…"
+          : "正在分析内容…";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top, paddingBottom: insets.bottom + 16, paddingHorizontal: 24 }}>
@@ -81,7 +81,7 @@ export default function Processing() {
         ) : null}
       </View>
       {failed && entry ? <PillButton label="重试" icon="refresh" onPress={() => void processEntry(entry.id)} style={{ marginBottom: 10 }} /> : null}
-      <PillButton label={failed ? "回到首页" : "先回去，好了告诉我"} variant={failed ? "primary" : "ghost"} onPress={() => router.dismissTo("/")} />
+      <PillButton label={failed ? "返回首页" : "返回，完成后通知我"} variant={failed ? "primary" : "ghost"} onPress={() => router.dismissTo("/")} />
     </View>
   );
 }

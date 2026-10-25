@@ -7,6 +7,20 @@ import { track } from "../track";
 type Prompter = (kind: PermissionKind, state: "ask" | "denied", reason?: string) => Promise<boolean>;
 let prompter: Prompter | null = null;
 
+const KIND_NAME: Record<PermissionKind, string> = {
+  notifications: "通知",
+  microphone: "麦克风",
+  camera: "相机",
+  photos: "照片",
+  photosAdd: "照片写入",
+  location: "定位",
+  locationAlways: "始终定位",
+  calendar: "日历",
+  reminders: "提醒事项",
+  contacts: "通讯录",
+  speech: "语音识别",
+};
+
 export function setPrompter(p: Prompter | null) {
   prompter = p;
 }
@@ -34,5 +48,5 @@ export async function ensureAccess(kind: PermissionKind, opts: { reason?: string
 // Same, but throws DeviceError("denied") so wrappers can stay linear.
 export async function needAccess(kind: PermissionKind, reason?: string): Promise<void> {
   const a = await ensureAccess(kind, { reason });
-  if (a !== "granted" && a !== "limited") throw new DeviceError("denied", `没有${kind}权限`);
+  if (a !== "granted" && a !== "limited") throw new DeviceError("denied", `未获得${KIND_NAME[kind]}权限`);
 }

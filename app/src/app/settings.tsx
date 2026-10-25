@@ -23,9 +23,9 @@ import { colors, radius } from "@/lib/theme";
 const log = logger("settings");
 
 const THEMES = [
-  ["system", "跟随系统", "白天浅色，夜里自动变深", "phone-portrait-outline"],
-  ["light", "浅色", "明亮的日间主题", "sunny-outline"],
-  ["dark", "深色", "适合夜晚，不刺眼", "moon-outline"],
+  ["system", "跟随系统", "随系统设置切换浅色或深色", "phone-portrait-outline"],
+  ["light", "浅色", "始终使用浅色主题", "sunny-outline"],
+  ["dark", "深色", "始终使用深色主题", "moon-outline"],
 ] as const;
 const LOOKS = [["original", "原版"], ["glasses", "戴眼镜"], ["beret", "贝雷帽"]] as const;
 const MORNING_TIMES = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"];
@@ -112,7 +112,7 @@ export default function Settings() {
     if (!on) return updateSettings({ lockBiometrics: false });
     // Confirm it actually works (and trigger the iOS permission prompt) before relying on it.
     if (await authenticateBiometric()) updateSettings({ lockBiometrics: true });
-    else Alert.alert(`${bioName} 未通过`, "没有开启。");
+    else Alert.alert(`${bioName} 验证未通过`, "未能开启生物识别解锁。");
   };
 
   // ---------- server / debug / data ----------
@@ -139,7 +139,7 @@ export default function Settings() {
         { text: "稍后", style: "cancel" },
         { text: "立即重启", onPress: () => void restartToApply() },
       ]);
-    else Alert.alert("已是最新", `当前运行：${runningLabel()}`);
+    else Alert.alert("已是最新版本", `当前运行：${runningLabel()}`);
   };
 
   const upload = async () => {
@@ -158,7 +158,7 @@ export default function Settings() {
       setLastLogId(id);
       setNote("");
       await Clipboard.setStringAsync(id);
-      Alert.alert("日志已上传", `编号：${id}\n（已复制，发给开发者即可）`);
+      Alert.alert("日志已上传", `编号：${id}\n编号已复制，可发送给开发者。`);
     } catch (e) {
       Alert.alert("上传失败", describeError(e));
     } finally {
@@ -209,7 +209,7 @@ export default function Settings() {
           <ToggleRow
             icon="sunny-outline"
             title="早间签到"
-            subtitle={ck.morning.enabled ? `每天 ${ck.morning.time} · 给今天定个方向` : "给今天定个方向"}
+            subtitle={ck.morning.enabled ? `每天 ${ck.morning.time} · 规划今天的安排` : "规划今天的安排"}
             value={ck.morning.enabled}
             onChange={(v) => void setCheckins({ ...ck, morning: { ...ck.morning, enabled: v } }, v)}
             onPress={ck.morning.enabled ? () => setSheet("morning") : undefined}
@@ -217,7 +217,7 @@ export default function Settings() {
           <ToggleRow
             icon="moon-outline"
             title="晚间签到"
-            subtitle={ck.evening.enabled ? `每天 ${ck.evening.time} · 回顾今天，放松一下` : "回顾今天，放松一下"}
+            subtitle={ck.evening.enabled ? `每天 ${ck.evening.time} · 回顾今天的记录` : "回顾今天的记录"}
             value={ck.evening.enabled}
             onChange={(v) => void setCheckins({ ...ck, evening: { ...ck.evening, enabled: v } }, v)}
             onPress={ck.evening.enabled ? () => setSheet("evening") : undefined}
@@ -239,8 +239,8 @@ export default function Settings() {
               <Ionicons name="sparkles" size={20} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[ui.title, { fontSize: 16 }]}>记得你说过的话</Text>
-              <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>{ck.remember ? "已开启 · " : ""}根据你真正说过的内容，第二天提醒你接着想。</Text>
+              <Text style={[ui.title, { fontSize: 16 }]}>次日回顾提醒</Text>
+              <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>{ck.remember ? "已开启 · " : ""}根据你的记录，第二天提醒你继续思考。</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
           </Card>
@@ -255,9 +255,9 @@ export default function Settings() {
           <ToggleRow icon="lock-closed-outline" title="密码锁" subtitle="打开 App 时需要 4 位密码" value={settings.lockEnabled} onChange={toggleLock} />
           {settings.lockEnabled ? (
             <>
-              {bioKind ? <ToggleRow icon="scan-outline" title={`使用 ${bioName}`} subtitle="解锁时优先用生物识别" value={settings.lockBiometrics} onChange={(v) => void toggleBio(v)} /> : null}
+              {bioKind ? <ToggleRow icon="scan-outline" title={`使用 ${bioName}`} subtitle="解锁时优先使用生物识别" value={settings.lockBiometrics} onChange={(v) => void toggleBio(v)} /> : null}
               <View style={{ paddingVertical: 10, paddingLeft: 42 }}>
-                <Text style={[ui.title, { fontSize: 15 }]}>离开后多久上锁</Text>
+                <Text style={[ui.title, { fontSize: 15 }]}>自动锁定</Text>
                 <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
                   {([[0, "立即"], [60, "1 分钟"], [300, "5 分钟"]] as const).map(([v, label]) => (
                     <Segment key={v} label={label} active={settings.lockDelaySec === v} onPress={() => updateSettings({ lockDelaySec: v })} />
@@ -270,7 +270,7 @@ export default function Settings() {
         </Section>
 
         <Section icon="person" title="称呼">
-          <Field value={name} onChange={setName} placeholder="首页问候用的名字（可空）" />
+          <Field value={name} onChange={setName} placeholder="首页问候中使用的称呼（可选）" />
           {name !== settings.name ? <PillButton label="保存" onPress={() => { updateSettings({ name: name.trim() }); toast("已保存"); }} style={{ marginTop: 10, height: 44 }} /> : null}
         </Section>
 
@@ -290,12 +290,12 @@ export default function Settings() {
 
         <Section icon="bug" title="调试">
           <Card style={{ gap: 10 }}>
-            <Text style={ui.body}>遇到问题时，简单描述一下再上传日志。日志只含操作和错误信息，不含记录内容。</Text>
-            <Field value={note} onChange={setNote} placeholder="发生了什么？（可空）" />
+            <Text style={ui.body}>遇到问题时，请简要描述后上传日志。日志仅包含操作和错误信息，不包含记录内容。</Text>
+            <Field value={note} onChange={setNote} placeholder="问题描述（可选）" />
             <PillButton label="上传日志" icon="cloud-upload-outline" onPress={() => void upload()} loading={uploading} />
             {lastLogId ? (
               <Pressable onPress={() => void Clipboard.setStringAsync(lastLogId)}>
-                <Text style={[ui.faint, { textAlign: "center" }]}>上次上传：{lastLogId}（点击复制）</Text>
+                <Text style={[ui.faint, { textAlign: "center" }]}>上次上传：{lastLogId}（点按复制）</Text>
               </Pressable>
             ) : null}
             <Pressable onPress={() => setShowLog(!showLog)}>
@@ -312,15 +312,15 @@ export default function Settings() {
           <ToggleRow
             icon="stats-chart-outline"
             title="上报使用统计"
-            subtitle="只发送用了哪些功能、是否成功，不含任何记录内容"
+            subtitle="仅发送功能使用情况及是否成功，不包含记录内容"
             value={settings.analytics}
             onChange={(v) => updateSettings({ analytics: v })}
           />
-          <NavRow icon="hardware-chip-outline" title="能力自检" subtitle="测试相机、相册、定位、日历等原生能力" onPress={() => router.push("/diagnostics")} />
+          <NavRow icon="hardware-chip-outline" title="能力自检" subtitle="测试相机、相册、定位、日历等系统功能" onPress={() => router.push("/diagnostics")} />
         </Section>
 
         <Section icon="folder-open" title="数据与隐私">
-          <Text style={[ui.faint, { lineHeight: 18, marginBottom: 6 }]}>录音和记录只保存在这台手机上。发去转写和整理时，服务器处理完就丢弃，不留存。</Text>
+          <Text style={[ui.faint, { lineHeight: 18, marginBottom: 6 }]}>录音和记录只保存在这台设备上。发送到服务器转写和整理的内容，处理完成后即丢弃，不会留存。</Text>
           <NavRow icon="download-outline" title="导出全部数据" subtitle="JSON 格式，包含记录和对话（不含录音）" onPress={() => void doExport()} />
           <NavRow icon="trash-outline" title="清空所有数据" subtitle="删除记录、录音和对话" onPress={wipe} danger />
         </Section>
@@ -330,9 +330,9 @@ export default function Settings() {
           <Text style={[ui.faint, { marginTop: 4 }]}>
             {updatesEnabled
               ? Updates.isEmbeddedLaunch
-                ? "运行的是安装包自带的代码"
-                : `运行热更新 ${Updates.updateId?.slice(0, 8)} · ${Updates.createdAt?.toLocaleString() ?? ""}`
-              : "开发模式，热更新未启用"}
+                ? "当前运行安装包内置版本"
+                : `当前运行热更新 ${Updates.updateId?.slice(0, 8)} · ${Updates.createdAt?.toLocaleString() ?? ""}`
+              : "开发模式，未启用热更新"}
           </Text>
           <Text style={[ui.faint, { marginTop: 2 }]}>运行时版本 {Updates.runtimeVersion ?? "-"} · session {sessionId}</Text>
           {updatesEnabled ? <PillButton label="检查更新" icon="cloud-download-outline" variant="ghost" onPress={() => void checkUpdate()} loading={checking} style={{ marginTop: 12, height: 44 }} /> : null}
@@ -370,7 +370,7 @@ export default function Settings() {
         </Sheet>
       ))}
 
-      <Sheet visible={sheet === "todo"} onClose={() => setSheet(null)} icon={<Ionicons name="checkmark-circle" size={26} color={colors.primary} />} title="待办提醒" body="有具体时间的待办到点提醒；只说了日期的，在下面这个时间提醒。" button="完成">
+      <Sheet visible={sheet === "todo"} onClose={() => setSheet(null)} icon={<Ionicons name="checkmark-circle" size={26} color={colors.primary} />} title="待办提醒" body="有具体时间的待办按时提醒；只有日期的待办在下方选择的时间提醒。" button="完成">
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 18, justifyContent: "center" }}>
           {ALLDAY_TIMES.map((t) => (
             <Pressable key={t} onPress={() => { tap(); updateSettings({ todoAllDayTime: t }); resyncTodoReminders(); }} style={{ width: 92, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: settings.todoAllDayTime === t ? colors.primary : colors.cardMuted, borderWidth: 1, borderColor: settings.todoAllDayTime === t ? colors.primary : colors.border }}>
@@ -393,12 +393,12 @@ export default function Settings() {
         ) : null}
       </Sheet>
 
-      <Sheet visible={sheet === "zone"} onClose={() => setSheet(null)} icon={<Ionicons name="globe" size={26} color={colors.primary} />} title="时区" body="待办的日期和提醒、「明天下午三点」这类说法、签到时间都按这个时区算。" button="完成">
+      <Sheet visible={sheet === "zone"} onClose={() => setSheet(null)} icon={<Ionicons name="globe" size={26} color={colors.primary} />} title="时区" body="待办日期与提醒、“明天下午三点”等时间表达以及签到时间，均按此时区计算。" button="完成">
         <View style={{ marginTop: 14 }}>
           <ToggleRow
             icon="location-outline"
             title="指定时区"
-            subtitle={settings.timeZone ? "不随手机时区变化" : `现在跟随系统：${zoneLabel(deviceZone())}`}
+            subtitle={settings.timeZone ? "不随设备时区变化" : `当前跟随系统：${zoneLabel(deviceZone())}`}
             value={!!settings.timeZone}
             onChange={(v) => setZone(v ? "Asia/Shanghai" : null)}
           />
@@ -418,12 +418,12 @@ export default function Settings() {
             </View>
           ) : null}
           <Text style={[ui.faint, { textAlign: "center", marginTop: 12 }]}>
-            按当前设置，现在是 {(() => { const w = wall(); return `${w.getMonth() + 1}月${w.getDate()}日 ${w.getHours()}:${`${w.getMinutes()}`.padStart(2, "0")}`; })()}（{appZone()}）
+            按当前时区，现在是 {(() => { const w = wall(); return `${w.getMonth() + 1}月${w.getDate()}日 ${w.getHours()}:${`${w.getMinutes()}`.padStart(2, "0")}`; })()}（{appZone()}）
           </Text>
         </View>
       </Sheet>
 
-      <Sheet visible={sheet === "remember"} onClose={() => setSheet(null)} icon={<Ionicons name="sparkles" size={26} color={colors.primary} />} title="记得你说过的话" body={`每条记录整理完后，Murmur 会在第二天 ${ck.evening.time}（晚间签到的时间）用这条记录的追问提醒你，点开就能接着说。`} button={null}>
+      <Sheet visible={sheet === "remember"} onClose={() => setSheet(null)} icon={<Ionicons name="sparkles" size={26} color={colors.primary} />} title="次日回顾提醒" body={`每条记录整理完成后，Murmur 会在第二天 ${ck.evening.time}（晚间签到时间）发送这条记录的追问。点按通知即可继续记录。`} button={null}>
         <PillButton
           label={ck.remember ? "关闭提醒" : "开启提醒"}
           variant={ck.remember ? "ghost" : "primary"}

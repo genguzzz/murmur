@@ -72,7 +72,7 @@ export default function Calendar() {
           <Text style={{ fontFamily: fonts.serif, fontSize: 28, color: colors.text, marginTop: 10, textAlign: "center" }}>
             {selDate.getMonth() + 1}月{selDate.getDate()}日 周{WEEKDAYS[selDate.getDay()]}
           </Text>
-          <Text style={[ui.body, { marginTop: 4 }]}>{dayEntries.length ? `${dayEntries.length} 条想法` : "这天没有记录"}</Text>
+          <Text style={[ui.body, { marginTop: 4 }]}>{dayEntries.length ? `${dayEntries.length} 条记录` : "这天没有记录"}</Text>
         </View>
 
         <View style={{ gap: 12 }}>
@@ -117,7 +117,7 @@ export default function Calendar() {
 
         {entries.length === 0 ? (
           <View style={{ alignItems: "center", marginTop: 30 }}>
-            <Bubble text="找一天，回来看看" size={56} />
+            <Bubble text="选择日期查看记录" size={56} />
           </View>
         ) : null}
       </ScrollView>

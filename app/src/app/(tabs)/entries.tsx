@@ -54,7 +54,7 @@ export default function Entries() {
             autoFocus={focus === "1"}
             value={query}
             onChangeText={setQuery}
-            placeholder="搜索文字…"
+            placeholder="搜索记录…"
             placeholderTextColor={colors.textFaint}
             style={{ flex: 1, height: 44, fontSize: 15, color: colors.text }}
             clearButtonMode="while-editing"
@@ -71,7 +71,7 @@ export default function Entries() {
         ) : null}
       </View>
       {rows.length === 0 ? (
-        <EmptyState text={entries.length ? "没找到相关的记录" : "有些想法值得再看一眼"} />
+        <EmptyState text={entries.length ? "没有找到相关记录" : "还没有记录"} />
       ) : (
         <FlatList
           data={rows}

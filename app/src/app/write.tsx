@@ -18,14 +18,14 @@ export default function Write() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <TopBar title={params.threadOf ? "接着记一条" : "写下一个想法"} />
+      <TopBar title={params.threadOf ? "记一条后续" : "写记录"} />
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
           <Mascot size={44} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: fonts.serif, fontSize: 24, color: colors.text }}>趁它还在，抓住它</Text>
+            <Text style={{ fontFamily: fonts.serif, fontSize: 24, color: colors.text }}>写下此刻的想法</Text>
             <Text style={{ color: colors.textSoft, marginTop: 4, lineHeight: 20 }}>
-              {params.prompt ?? "乱一点也没关系，保存后会帮你整理。"}
+              {params.prompt ?? "保存后，Murmur 会自动整理内容。"}
             </Text>
           </View>
         </View>
@@ -34,11 +34,11 @@ export default function Write() {
           multiline
           value={text}
           onChangeText={setText}
-          placeholder="在想什么？"
+          placeholder="今天想记录什么？"
           placeholderTextColor={colors.textFaint}
           style={{ minHeight: 220, backgroundColor: colors.card, borderRadius: radius.md, padding: 16, fontSize: 16, lineHeight: 24, color: colors.text, textAlignVertical: "top", borderWidth: 1, borderColor: colors.border }}
         />
-        <PillButton label="保存" icon="arrow-up" onPress={save} disabled={text.trim().length < 2} />
+        <PillButton label="保存记录" icon="arrow-up" onPress={save} disabled={text.trim().length < 2} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

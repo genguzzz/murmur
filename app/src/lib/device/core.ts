@@ -75,5 +75,5 @@ export function capabilities(): Record<Capability, boolean> {
 }
 
 export function requireCapability(cap: Capability) {
-  if (!has(cap)) throw new DeviceError("unavailable", `${cap} 不在这个安装包里，需要更新 App`);
+  if (!has(cap)) throw new DeviceError("unavailable", `当前版本不支持 ${cap}，请更新 App`);
 }

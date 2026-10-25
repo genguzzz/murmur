@@ -12,7 +12,7 @@ export default function EditEntry() {
   const [title, setTitle] = useState(entry?.title ?? "");
   const [text, setText] = useState(entry?.text ?? entry?.rawText ?? "");
 
-  if (!entry) return (<Screen><TopBar /><EmptyState text="这条记录不见了" /></Screen>);
+  if (!entry) return (<Screen><TopBar /><EmptyState text="找不到这条记录" /></Screen>);
 
   const save = () => {
     editEntry(entry.id, { title: title.trim() || entry.title, text });

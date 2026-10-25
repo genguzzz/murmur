@@ -28,7 +28,7 @@ export function EntryCard({ entry, onPress, full }: { entry: Entry; onPress: () 
   if (entry.status === "failed") {
     return (
       <Card onPress={onPress} style={{ borderColor: colors.danger + "66" }}>
-        <Text style={[ui.title, { color: colors.danger }]}>处理失败，点开查看</Text>
+        <Text style={[ui.title, { color: colors.danger }]}>处理失败，点按查看详情</Text>
         <Text style={[ui.body, { marginTop: 4 }]}>{entry.error}</Text>
       </Card>
     );

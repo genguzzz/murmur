@@ -28,7 +28,7 @@ export default function InsightScreen() {
     if (hasToken && cache && insightsStale()) refreshInsights().catch((e) => log.warn("refresh failed", e));
   }, [hasToken, cache]);
 
-  if (!entry) return (<Screen><TopBar title="你的洞察" /><EmptyState text="这条记录不见了" /></Screen>);
+  if (!entry) return (<Screen><TopBar title="洞察" /><EmptyState text="找不到这条记录" /></Screen>);
 
   const analyzeAll = () => {
     setError(null);
@@ -44,7 +44,7 @@ export default function InsightScreen() {
 
   return (
     <Screen>
-      <TopBar title="你的洞察" />
+      <TopBar title="洞察" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 60 }}>
         {entry.action ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 14, marginTop: 4 }}>
@@ -63,8 +63,8 @@ export default function InsightScreen() {
             <Ionicons name="sparkles" size={20} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[ui.title, { fontSize: 16 }]}>看看更大的图景</Text>
-            <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>这里基于你最新的一条记录。点这里看所有记录之间的规律。</Text>
+            <Text style={[ui.title, { fontSize: 16 }]}>查看全部记录的规律</Text>
+            <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>以上内容基于你最新的一条记录。轻点查看全部记录之间的规律。</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
         </Card>
@@ -92,9 +92,9 @@ export default function InsightScreen() {
           <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
         </View>
 
-        <PatternCard icon="repeat" tint="#8E7CC3" title="一个模式正在形成" empty="发现你没注意到的规律，比如周一的你其实是什么状态" item={pattern ? { head: pattern.title, body: pattern.detail } : undefined} onPress={() => router.push("/insights")} />
-        <PatternCard icon="people" tint="#8E7CC3" title="你常想到的人" empty="看看你最常提到谁，以及提到他们时的情绪" item={person ? { head: person.name, body: person.detail } : undefined} onPress={() => router.push("/insights")} />
-        <PatternCard icon="alert-circle" tint="#D86A73" title="反复出现的担忧" empty="看看哪些担忧反复出现、出现得有多频繁" item={recurring ? { head: `${recurring.title} · ${recurring.count} 次`, body: recurring.detail } : undefined} onPress={() => router.push("/insights")} />
+        <PatternCard icon="repeat" tint="#8E7CC3" title="正在形成的模式" empty="记录中反复出现的规律，例如你在周一的状态" item={pattern ? { head: pattern.title, body: pattern.detail } : undefined} onPress={() => router.push("/insights")} />
+        <PatternCard icon="people" tint="#8E7CC3" title="你常想到的人" empty="你最常提到的人，以及提到他们时的情绪" item={person ? { head: person.name, body: person.detail } : undefined} onPress={() => router.push("/insights")} />
+        <PatternCard icon="alert-circle" tint="#D86A73" title="反复出现的担忧" empty="反复出现的担忧及其出现频率" item={recurring ? { head: `${recurring.title} · ${recurring.count} 次`, body: recurring.detail } : undefined} onPress={() => router.push("/insights")} />
 
         {!cache ? <PillButton label="分析全部记录" icon="sparkles" onPress={analyzeAll} loading={loading} style={{ marginTop: 8 }} /> : null}
         {error ? <Text style={{ color: colors.danger, marginTop: 12, textAlign: "center" }}>{error}</Text> : null}

@@ -40,7 +40,7 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
 
   const tomorrow = () => {
     postponeTodo(todo.id);
-    toast("推到明天了", todo.time ? `明天 ${todo.time} 提醒你` : undefined);
+    toast("已推迟到明天", todo.time ? `将在明天 ${todo.time} 提醒` : undefined);
     onClose();
   };
 
@@ -58,25 +58,25 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
         </View>
         <ScrollView contentContainerStyle={{ padding: 18, gap: 18 }} keyboardShouldPersistTaps="handled">
           <View style={{ backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border }}>
-            <TextInput value={title} onChangeText={setTitle} placeholder="要做什么" placeholderTextColor={colors.textFaint} multiline style={{ fontSize: 19, fontWeight: "600", color: colors.text, padding: 16, paddingBottom: 8 }} />
+            <TextInput value={title} onChangeText={setTitle} placeholder="待办内容" placeholderTextColor={colors.textFaint} multiline style={{ fontSize: 19, fontWeight: "600", color: colors.text, padding: 16, paddingBottom: 8 }} />
             <TextInput value={note} onChangeText={setNote} placeholder="备注" placeholderTextColor={colors.textFaint} multiline style={{ fontSize: 15, color: colors.textSoft, paddingHorizontal: 16, paddingBottom: 16, minHeight: 44 }} />
           </View>
 
           <View>
-            <Label icon="calendar-outline" text={due.date ? `提醒：${dueLabel(due)}` : "什么时候做"} />
+            <Label icon="calendar-outline" text={due.date ? `提醒：${dueLabel(due)}` : "设置时间"} />
             <DueEditor value={due} onChange={setDue} />
           </View>
 
           <Pressable onPress={() => { tap(); setHigh(!high); }} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <Ionicons name={high ? "flag" : "flag-outline"} size={19} color={high ? colors.danger : colors.textSoft} />
             <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>重要</Text>
-            <Text style={{ fontSize: 13, color: colors.textFaint }}>{high ? "已标记" : "点按标记"}</Text>
+            <Text style={{ fontSize: 13, color: colors.textFaint }}>{high ? "已标记" : "点按标记为重要"}</Text>
           </Pressable>
 
           {!todo.doneAt ? (
             <Pressable onPress={tomorrow} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: radius.md, backgroundColor: colors.cardMuted, borderWidth: 1, borderColor: colors.border, opacity: pressed ? 0.8 : 1 })}>
               <Ionicons name="arrow-redo-outline" size={19} color={colors.primary} />
-              <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>推到明天</Text>
+              <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>推迟到明天</Text>
               {todo.postponed ? <Text style={{ fontSize: 12, color: colors.textFaint }}>已推迟 {todo.postponed} 次</Text> : null}
             </Pressable>
           ) : null}

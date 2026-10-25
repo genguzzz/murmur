@@ -20,7 +20,7 @@ export function NoticeBridge() {
           label: a.label,
           onPress: () => {
             if (a.undo) {
-              if (runUndo(a.undo)) toast("已撤销", "改动都恢复原样了");
+              if (runUndo(a.undo)) toast("已撤销", "所有改动已恢复");
             } else if (a.path) router.push(a.path as never);
           },
         })),

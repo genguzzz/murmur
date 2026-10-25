@@ -1,7 +1,7 @@
 // To-dos from speech: decide whether a memo is a note or a task, turn tasks into
 // dated reminders, and write the Home "today" brief that keeps them moving.
 import { z } from "zod";
-import { call, type ClaudeMeta } from "./claude.ts";
+import { call, TONE, type ClaudeMeta } from "./claude.ts";
 
 // ---------- intent: note vs. to-do ----------
 
@@ -106,8 +106,9 @@ ${TIME_RULES}
 
 ${ASK_RULES}
 
-## 语气
-reply 是一句简短、自然的确认，像靠谱的助理，不浮夸，不加表情。默认简体中文；用户主要说英文时用英文。`;
+reply 是一句简短、准确的确认，说明创建或修改了什么。
+
+${TONE}`;
 
 export interface IntentInput {
   text: string;
@@ -174,14 +175,16 @@ const briefJsonSchema = {
 
 const BRIEF_SYSTEM = `你是语音日记应用 Murmur 首页上的『今日回顾』。用户每次打开应用都会看到你写的这一小段。
 你能看到用户的待办（含逾期天数、创建了多久、推迟次数）、最近完成的事和最近几条日记。
-你的任务：帮用户看清今天该推进什么，并温和地跟进那些被搁置的事。
+你的任务：帮用户看清今天该推进什么，并提示那些被搁置的事。
 原则：
 - 具体：直接点出待办的名字和日记里的事，不说空话。
 - 克制：focus 最多 3 件，nudges 最多 2 条，只挑真正需要跟进的。
 - 联系：如果日记里提到了和某个待办相关的情况（比如焦虑、已经做完、时间冲突），说出来。
-- 不责备、不说教、不加表情；像一个了解你的朋友顺口提一句。
+- 不责备、不催促，客观说明情况和可选的处理方式。
 - 没有待办时，就根据最近的记录说一句有用的话，focus 和 nudges 都为空。
-- index 只能用 <todos> 里给出的编号。默认简体中文。`;
+- index 只能用 <todos> 里给出的编号。默认简体中文。
+
+${TONE}`;
 
 export interface BriefInput {
   now: string;

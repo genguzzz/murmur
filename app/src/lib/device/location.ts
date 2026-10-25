@@ -81,7 +81,7 @@ if (Platform.OS !== "web") TaskManager.defineTask<{ eventType: Location.Geofenci
   track("geofence", { kind, known: !!fence });
   if (!fence || (fence.on !== "both" && fence.on !== kind)) return;
   await Notifications.scheduleNotificationAsync({
-    content: { title: fence.title, body: fence.body ?? (kind === "enter" ? "你到了" : "你离开了"), sound: "default", data: { ...fence.data, geofence: fence.id } },
+    content: { title: fence.title, body: fence.body ?? (kind === "enter" ? "已到达" : "已离开"), sound: "default", data: { ...fence.data, geofence: fence.id } },
     trigger: null,
   });
 });

@@ -19,7 +19,7 @@ type Row = TodoDraft & { include: boolean; answered: boolean; editing: boolean }
 export default function Confirm() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const pending = useStore((s) => s.inbox.find((p) => p.id === id));
-  if (!pending) return <EmptyState text="这条已经处理过了" />;
+  if (!pending) return <EmptyState text="此条内容已处理" />;
   return <ConfirmView pending={pending} />;
 }
 
@@ -37,8 +37,8 @@ function ConfirmView({ pending }: { pending: PendingIntent }) {
   const confirm = async () => {
     tap();
     const created = confirmPending(pending.id, chosen, [...completes]);
-    const parts = [created.length ? `加了 ${created.length} 件待办` : "", completes.size ? `完成 ${completes.size} 件` : ""].filter(Boolean);
-    toast(parts.join("，") || "好的", created.length === 1 && created[0].date ? `${dueLabel(created[0])} 提醒你` : undefined);
+    const parts = [created.length ? `已添加 ${created.length} 项待办` : "", completes.size ? `已完成 ${completes.size} 项` : ""].filter(Boolean);
+    toast(parts.join("，") || "已处理", created.length === 1 && created[0].date ? `将在 ${dueLabel(created[0])} 提醒` : undefined);
     router.back();
     if (created.some((t) => t.date)) void ensureReminderPermission();
   };
@@ -50,13 +50,13 @@ function ConfirmView({ pending }: { pending: PendingIntent }) {
     else router.back();
   };
 
-  const primaryLabel = chosen.length ? `添加 ${chosen.length} 件待办${completes.size ? `，完成 ${completes.size} 件` : ""}` : completes.size ? `标记 ${completes.size} 件完成` : "都不需要";
+  const primaryLabel = chosen.length ? `添加 ${chosen.length} 项待办${completes.size ? `，完成 ${completes.size} 项` : ""}` : completes.size ? `标记 ${completes.size} 项为已完成` : "全部不添加";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 18, paddingTop: 16, paddingBottom: 6 }}>
         <Pressable hitSlop={10} onPress={() => router.back()}>
-          <Text style={{ fontSize: 16, color: colors.textSoft }}>稍后</Text>
+          <Text style={{ fontSize: 16, color: colors.textSoft }}>稍后处理</Text>
         </Pressable>
         <Text style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: "600", color: colors.text }}>确认待办</Text>
         <View style={{ width: 32 }} />
@@ -67,7 +67,7 @@ function ConfirmView({ pending }: { pending: PendingIntent }) {
           <Mascot size={56} mood="talk" />
           <SpeechBubble style={{ flex: 1 }}>
             <Text style={{ fontSize: 15.5, lineHeight: 23, color: colors.text }}>
-              {unanswered ? "有个地方想跟你确认一下：" : pending.reply || "我听到了这些要做的事："}
+              {unanswered ? "以下内容需要你确认：" : pending.reply || "识别到以下待办事项："}
             </Text>
           </SpeechBubble>
         </View>
@@ -86,7 +86,7 @@ function ConfirmView({ pending }: { pending: PendingIntent }) {
 
         {pending.completes.length ? (
           <View style={{ marginTop: 22 }}>
-            <Text style={{ fontSize: 14, fontWeight: "800", color: colors.text, marginBottom: 8, paddingHorizontal: 4 }}>这些好像已经做完了</Text>
+            <Text style={{ fontSize: 14, fontWeight: "800", color: colors.text, marginBottom: 8, paddingHorizontal: 4 }}>以下待办可能已完成</Text>
             <View style={{ backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, ...shadow() }}>
               {pending.completes.map((c, i) => (
                 <View key={c.todoId} style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 14, borderTopWidth: i ? 1 : 0, borderTopColor: colors.border }}>
@@ -108,7 +108,7 @@ function ConfirmView({ pending }: { pending: PendingIntent }) {
       <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: insets.bottom + 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg }}>
         <PillButton label={primaryLabel} icon="checkmark" onPress={() => (chosen.length || completes.size ? void confirm() : (dismissPending(pending.id), router.back()))} />
         <Pressable onPress={pending.kind === "mixed" ? () => { dismissPending(pending.id); router.back(); } : asNote} style={{ alignSelf: "center", padding: 12 }}>
-          <Text style={{ color: colors.textSoft, fontSize: 14 }}>{pending.kind === "mixed" ? "这些都不用记" : "其实是一条笔记，存进日记"}</Text>
+          <Text style={{ color: colors.textSoft, fontSize: 14 }}>{pending.kind === "mixed" ? "全部忽略" : "改为保存为记录"}</Text>
         </Pressable>
       </View>
     </View>
@@ -146,7 +146,7 @@ function DraftCard({ row, onChange }: { row: Row; onChange: (p: Partial<Row>) =>
               <Chip key={o.label} label={o.label} active={false} onPress={() => { tap(); onChange({ date: o.date, time: o.time, answered: true }); }} />
             ))}
             <Chip label="不设时间" active={false} onPress={() => { tap(); onChange({ date: "", time: "", repeat: "none", answered: true }); }} />
-            <Chip label="自己选" icon="calendar-outline" active={false} onPress={() => { tap(); onChange({ editing: true, answered: true }); }} />
+            <Chip label="选择时间" icon="calendar-outline" active={false} onPress={() => { tap(); onChange({ editing: true, answered: true }); }} />
           </View>
         </View>
       ) : null}

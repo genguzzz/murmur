@@ -38,13 +38,13 @@ export default function EntryScreen() {
   const [legend, setLegend] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  if (!entry) return (<Screen><TopBar /><EmptyState text="这条记录不见了" /></Screen>);
+  if (!entry) return (<Screen><TopBar /><EmptyState text="找不到这条记录" /></Screen>);
 
   const busy = entry.status === "transcribing" || entry.status === "analyzing";
   const words = entry.rawText ?? entry.text ?? "";
 
   const remove = () =>
-    Alert.alert("删除这条记录？", "录音和文字都会删除，无法恢复。", [
+    Alert.alert("删除这条记录？", "录音和文字将一并删除，且无法恢复。", [
       { text: "取消", style: "cancel" },
       { text: "删除", style: "destructive", onPress: () => { deleteEntry(entry.id); router.back(); } },
     ]);
@@ -62,12 +62,12 @@ export default function EntryScreen() {
     const at = instantOf(w);
     setReturnAt(entry.id, at.toISOString());
     setPickTime(false);
-    toast("约好了", `${shortDate(at.toISOString())} 会回到首页。`);
+    toast("已设置回看时间", `${shortDate(at.toISOString())} 将重新显示在首页。`);
   };
 
   const cancelReturn = () => {
     setReturnAt(entry.id, undefined);
-    toast("已取消回看", "这条记录不再约时间回来。");
+    toast("已取消回看", "这条记录的回看时间已取消。");
   };
 
   const followUpParams = entry.followUp && !entry.followUpDone ? { prompt: entry.followUp, followUpOf: entry.id } : {};
@@ -96,7 +96,7 @@ export default function EntryScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
           <EntryArt seed={entry.id} size={58} />
           <Text style={{ flex: 1, fontFamily: fonts.serif, fontSize: 27, lineHeight: 34, color: colors.text }}>
-            {entry.title ?? (busy ? "整理中…" : "未整理的记录")}
+            {entry.title ?? (busy ? "正在整理…" : "未整理的记录")}
           </Text>
         </View>
         <Text style={[ui.faint, { marginTop: 8 }]}>{fullDate(entry.createdAt)}</Text>
@@ -104,7 +104,7 @@ export default function EntryScreen() {
         {busy ? (
           <Card muted style={{ marginTop: 16, flexDirection: "row", gap: 10, alignItems: "center" }}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={ui.body}>{entry.status === "transcribing" ? "正在转写语音…" : "正在整理内容…"}</Text>
+            <Text style={ui.body}>{entry.status === "transcribing" ? "正在转写录音…" : "正在整理内容…"}</Text>
           </Card>
         ) : null}
 
@@ -127,22 +127,22 @@ export default function EntryScreen() {
                 <Ionicons name="return-down-back" size={15} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[ui.title, { fontSize: 15 }]}>回头再看</Text>
+                <Text style={[ui.title, { fontSize: 15 }]}>稍后回看</Text>
                 <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>
                   {entry.keepOnHome
-                    ? "会一直留在首页，直到你移除。"
+                    ? "将一直显示在首页，直到你移除。"
                     : entry.returnAt
-                      ? `${shortDate(entry.returnAt)} 回到首页。`
-                      : "准备好接着想的时候，把它带回首页。"}
+                      ? `${shortDate(entry.returnAt)} 重新显示在首页。`
+                      : "可以固定在首页，或设置时间重新显示。"}
                 </Text>
               </View>
             </View>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 14, marginLeft: 42 }}>
               <SmallButton label={entry.keepOnHome ? "从首页移除" : "固定在首页"} icon={entry.keepOnHome ? "bookmark" : "bookmark-outline"} active={entry.keepOnHome} onPress={keep} />
               {entry.returnAt && !entry.keepOnHome ? (
-                <SmallButton label="取消约定" icon="close" onPress={cancelReturn} />
+                <SmallButton label="取消回看" icon="close" onPress={cancelReturn} />
               ) : !entry.keepOnHome ? (
-                <SmallButton label="选个时间" icon="alarm-outline" onPress={() => setPickTime(true)} />
+                <SmallButton label="设置时间" icon="alarm-outline" onPress={() => setPickTime(true)} />
               ) : null}
             </View>
           </Card>
@@ -158,8 +158,8 @@ export default function EntryScreen() {
                   <Pressable key={t.id} disabled={here} onPress={() => { tap(); router.push(`/entry/${t.id}`); }} style={({ pressed }) => ({ flexDirection: "row", gap: 12, opacity: pressed ? 0.7 : 1 })}>
                     <View style={{ width: 3, borderRadius: 2, backgroundColor: here ? colors.primary : colors.border }} />
                     <View style={{ flex: 1, paddingVertical: 8 }}>
-                      <Text style={ui.faint}>{i === 0 ? "最初" : "后续"} · {shortDate(t.createdAt)}{here ? " · 你在这里" : ""}</Text>
-                      <Text style={{ fontSize: 16, color: colors.text, marginTop: 3, fontWeight: here ? "700" : "400" }} numberOfLines={1}>{t.title ?? "整理中…"}</Text>
+                      <Text style={ui.faint}>{i === 0 ? "最初" : "后续"} · {shortDate(t.createdAt)}{here ? " · 当前记录" : ""}</Text>
+                      <Text style={{ fontSize: 16, color: colors.text, marginTop: 3, fontWeight: here ? "700" : "400" }} numberOfLines={1}>{t.title ?? "正在整理…"}</Text>
                     </View>
                     {here ? null : <Ionicons name="chevron-forward" size={15} color={colors.textFaint} style={{ alignSelf: "center" }} />}
                   </Pressable>
@@ -173,7 +173,7 @@ export default function EntryScreen() {
           <Card style={{ marginTop: 14 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Ionicons name="chatbox-ellipses-outline" size={13} color={colors.primary} />
-              <Text style={[ui.faint, { fontWeight: "700", letterSpacing: 1.2 }]}>你一开始聊的</Text>
+              <Text style={[ui.faint, { fontWeight: "700", letterSpacing: 1.2 }]}>回答的问题</Text>
             </View>
             <Text style={{ color: colors.text, fontSize: 15, marginTop: 8, lineHeight: 22 }}>{entry.prompt}</Text>
           </Card>
@@ -183,7 +183,7 @@ export default function EntryScreen() {
           <>
             <SectionTitle
               icon="document-text-outline"
-              title="你的原话"
+              title="原文"
             />
             <Card>
               {entry.kind === "voice" && entry.audioFile ? (
@@ -219,7 +219,7 @@ export default function EntryScreen() {
               <MoodStamp mood={entry.mood} size={50} />
               <View style={{ flex: 1 }}>
                 <Text style={[ui.title, { fontSize: 17 }]}>{entry.moodLabel ?? MOOD_LABELS[entry.mood]}</Text>
-                <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>看看这天前后的记录</Text>
+                <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>查看这天前后的记录</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
             </Card>
@@ -244,7 +244,7 @@ export default function EntryScreen() {
           </SpeechBubble>
         </View>
       ) : null}
-      <BottomBar label="接着记一条" onWrite={() => router.push({ pathname: "/write", params: { threadOf: root, ...followUpParams } })} onRecord={talkMore} onChat={() => router.push("/chats")} />
+      <BottomBar label="记一条后续" onWrite={() => router.push({ pathname: "/write", params: { threadOf: root, ...followUpParams } })} onRecord={talkMore} onChat={() => router.push("/chats")} />
 
       <Sheet visible={menu} onClose={() => setMenu(false)} button={null}>
         <View style={{ gap: 10 }}>
@@ -255,7 +255,7 @@ export default function EntryScreen() {
         </View>
       </Sheet>
 
-      <Sheet visible={pickTime} onClose={() => setPickTime(false)} icon={<Ionicons name="alarm-outline" size={26} color={colors.primary} />} title="什么时候回来看？" button="取消">
+      <Sheet visible={pickTime} onClose={() => setPickTime(false)} icon={<Ionicons name="alarm-outline" size={26} color={colors.primary} />} title="选择回看时间" button="取消">
         <View style={{ gap: 10, marginTop: 18 }}>
           {RETURN_OPTIONS.map(([label, days]) => (
             <PillButton key={label} label={label} variant="soft" onPress={() => chooseTime(days)} />

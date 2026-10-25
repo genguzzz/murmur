@@ -54,8 +54,8 @@ async function finish(kind: Kind, final: LiveState | null, immediate: boolean) {
 export function liveRecording(opts: { elapsedSec: number; paused: boolean; prompt?: string; todo?: boolean }) {
   return push("record", {
     mode: opts.paused ? "recordingPaused" : "recording",
-    title: opts.paused ? "录音已暂停" : opts.todo ? "正在记待办" : "正在录音",
-    subtitle: opts.prompt ?? "Murmur 在听",
+    title: opts.paused ? "录音已暂停" : opts.todo ? "正在录制待办" : "正在录音",
+    subtitle: opts.prompt ?? "Murmur",
     anchor: nowSec() - opts.elapsedSec,
     elapsed: opts.elapsedSec,
     duration: 0,
@@ -64,7 +64,7 @@ export function liveRecording(opts: { elapsedSec: number; paused: boolean; promp
 
 export function endLiveRecording(saved: boolean) {
   const s = lastState.record;
-  return finish("record", saved && s ? { ...s, mode: "recordingPaused", title: "已保存", subtitle: "正在整理这段话…" } : null, !saved);
+  return finish("record", saved && s ? { ...s, mode: "recordingPaused", title: "已保存", subtitle: "正在整理录音…" } : null, !saved);
 }
 
 // ---------- playback ----------

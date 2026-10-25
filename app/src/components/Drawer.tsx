@@ -23,8 +23,8 @@ function animateTo(v: 0 | 1) {
 type Item = { icon: keyof typeof Ionicons.glyphMap; label: string; path: string; hint?: string };
 
 const ITEMS: Item[] = [
-  { icon: "create-outline", label: "写一段", path: "/write", hint: "不方便说话时打字记录" },
-  { icon: "time-outline", label: "历史记录", path: "/entries", hint: "按时间翻看所有记录" },
+  { icon: "create-outline", label: "写一段", path: "/write", hint: "不方便说话时输入文字记录" },
+  { icon: "time-outline", label: "历史记录", path: "/entries", hint: "按时间查看所有记录" },
   { icon: "calendar-outline", label: "日历", path: "/calendar" },
   { icon: "sparkles-outline", label: "规律与洞察", path: "/insights" },
   { icon: "search-outline", label: "搜索", path: "/search" },
@@ -98,7 +98,7 @@ export function DrawerHost() {
               {name ? `${greeting()}，${name}` : "Murmur"}
             </Text>
             <Text style={{ fontSize: 13, color: colors.textSoft, marginTop: 3 }}>
-              {stats.count ? `记录了 ${stats.days} 天 · ${stats.count} 条` : "说出来，想清楚"}
+              {stats.count ? `记录了 ${stats.days} 天 · ${stats.count} 条` : "尚无记录"}
             </Text>
           </View>
         </View>
@@ -109,7 +109,7 @@ export function DrawerHost() {
             style={({ pressed }) => ({ marginTop: 22, flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: radius.md, backgroundColor: colors.primarySoft, opacity: pressed ? 0.8 : 1 })}
           >
             <Ionicons name="mail-unread-outline" size={20} color={colors.primary} />
-            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>{inbox.length} 条录音等你确认</Text>
+            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>{inbox.length} 条录音待确认</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.primary} />
           </Pressable>
         ) : null}
@@ -125,7 +125,7 @@ export function DrawerHost() {
         <View style={{ flex: 1 }} />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 6 }}>
           <Ionicons name="lock-closed-outline" size={12} color={colors.textFaint} />
-          <Text style={{ fontSize: 12, color: colors.textFaint }}>录音只保存在这台手机上</Text>
+          <Text style={{ fontSize: 12, color: colors.textFaint }}>录音只保存在这台设备上</Text>
         </View>
         <Text style={{ fontSize: 12, color: colors.textFaint, marginTop: 4, paddingHorizontal: 6 }}>Murmur {appVersion}</Text>
       </Animated.View>

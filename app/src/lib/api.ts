@@ -40,13 +40,13 @@ function rid() {
 // Human-readable message for UI; the raw details go to the log.
 export function describeError(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 401) return "访问令牌不对，请到设置里检查";
+    if (e.status === 401) return "访问令牌无效，请在设置中检查";
     if (e.code === "timeout") return "请求超时，请检查网络";
-    if (e.status === 0) return `请求没发出去：${e.message}`;
-    if (e.status === 429) return "请求太频繁，稍后再试";
-    if (e.code === "groq_error") return "语音识别服务出错了";
-    if (e.code.startsWith("claude")) return "AI 服务暂时出错了";
-    return `服务器出错（${e.status} ${e.code}）`;
+    if (e.status === 0) return `无法连接服务器：${e.message}`;
+    if (e.status === 429) return "请求过于频繁，请稍后重试";
+    if (e.code === "groq_error") return "语音识别服务暂时不可用";
+    if (e.code.startsWith("claude")) return "AI 服务暂时不可用";
+    return `服务器错误（${e.status} ${e.code}）`;
   }
   return e instanceof Error ? e.message : String(e);
 }
@@ -368,7 +368,7 @@ export async function agent(body: AgentRequest, onEvent: (ev: AgentEvent) => voi
     log.error(`✗ ${path} agent error`, { rid: id, ms: Date.now() - started, code: (failure as ApiError).code });
     throw failure;
   }
-  if (!result) throw new ApiError(0, "network", "连接中断了", id);
+  if (!result) throw new ApiError(0, "network", "连接已中断", id);
   const r = result as AgentResult;
   log.info(`← ${path}`, { rid: id, ms: Date.now() - started, route: r.route, ops: r.ops.length });
   return r;

@@ -8,7 +8,7 @@
 // the end (one undo). Progress streams to the app as NDJSON events.
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { analyzeEntry, client, RefusalError, type Analysis } from "./claude.ts";
+import { analyzeEntry, client, RefusalError, TONE, type Analysis } from "./claude.ts";
 import { config } from "./config.ts";
 import { APP_GUIDE } from "./guide.ts";
 import { ASK_RULES, TIME_RULES } from "./todos.ts";
@@ -176,9 +176,9 @@ const TOOL_DEFS = {
       properties: {
         route: { type: "string", enum: [...ROUTES] },
         continues: str("这段话是哪条日记的后续（<journal> 里的 id），不是就空字符串"),
-        reply: str("一句简短确认，说清你做了什么；chat/pending 时空字符串"),
-        title: str("route=chat 时对话标题（≤12 字），route=pending 时卡片标题（如『这像是一次试录』），否则空字符串"),
-        pending_reason: str("route=pending 时一句话说明为什么没处理（第二人称），否则空字符串"),
+        reply: str("一句简短、准确的确认，说明做了什么；chat/pending 时空字符串"),
+        title: str("route=chat 时对话标题（≤12 字），route=pending 时卡片标题（如『内容过短，未能判断』『可能是测试录音』），否则空字符串"),
+        pending_reason: str("route=pending 时一句话客观说明为什么没有处理，否则空字符串"),
       },
     },
   },
@@ -322,7 +322,11 @@ ${ASK_RULES}
 能一次做完就在同一轮里并行调用所有需要的工具，包括 finish。只有确实需要看旧记录原文（比如判断是不是某条的后续）时才用 read_entries。
 
 ## finish.reply
-一句简短确认，说清你做了什么，如『记下了，顺手把交报告改到周五下午 3 点。』。没做任何待办改动的 journal 可以留空。不加表情。默认简体中文；用户主要说英文时用英文。`;
+一句简短、准确的确认，说明做了什么，如『已保存记录，并将“交报告”改到周五 15:00。』。没做任何待办改动的 journal 可以留空。
+
+pending_reason 客观说明为什么没有处理，如『内容较短，无法判断是记录、待办还是提问。』，不猜测用户的状态。
+
+${TONE}`;
 
 const CHAT_SYSTEM = `你是 Murmur 里的助手，用户私人语音日记和待办的伙伴。你可以：
 - 陪用户聊天、回顾和梳理想法。<journal> 里只有摘要，需要原文时用 read_entries 或 search_entries；引用时说明是哪天哪条，不编造日记里没有的内容。
@@ -331,7 +335,9 @@ const CHAT_SYSTEM = `你是 Murmur 里的助手，用户私人语音日记和待
 - 用户要你"记下来""存一条记录"时用 save_entry。
 - 用户问 Murmur 本身怎么用、某个功能在哪、会发生什么时，按 <app_guide> 回答。
 改完待办或存了记录后，用一句话告诉用户改了什么（应用会给他撤销按钮）。
-回答简洁自然，像朋友聊天；可以用短列表，不用标题。默认简体中文；用户说英文就用英文。
+回答简洁、准确、有条理；可以用短列表，不用标题。
+
+${TONE}
 
 ${TIME_RULES}
 
@@ -342,10 +348,10 @@ ${APP_GUIDE}`;
 // ---------- loop ----------
 
 const ROUTE_LABEL: Record<Route, string> = {
-  journal: "这是一段记录",
-  todo: "这是关于待办的",
-  chat: "这是个问题，去对话里回答",
-  pending: "没听出要做什么，先放着",
+  journal: "判断为记录",
+  todo: "判断为待办事项",
+  chat: "判断为提问，转到对话",
+  pending: "未能判断用途，放入待确认",
 };
 
 function short(s: string, n = 14) {
@@ -400,13 +406,13 @@ function runTool(loop: Loop, name: string, input: unknown): { content: string; i
     case "read_entries": {
       const { ids } = a as z.infer<typeof Args.read_entries>;
       const found = ids.map((id) => ws.entry(id)).filter((e) => !!e);
-      step(loop, found.length ? `翻看${found.map((e) => `《${short(e.title, 10)}》`).join("")}` : "翻看记录");
+      step(loop, found.length ? `查阅${found.map((e) => `《${short(e.title, 10)}》`).join("")}` : "查阅记录");
       if (!found.length) return { content: "没有这些 id 的记录", isError: true };
       return { content: found.map((e) => `## [${e.id}] ${e.date}《${e.title}》\n${(e.text || e.summary).slice(0, 3000)}`).join("\n\n") };
     }
     case "search_entries": {
       const { query } = a as z.infer<typeof Args.search_entries>;
-      step(loop, `在记录里找「${short(query, 10)}」`);
+      step(loop, `检索记录「${short(query, 10)}」`);
       const hits = searchEntries(ws.req, query);
       return { content: hits.length ? JSON.stringify(hits) : "没有找到相关记录" };
     }
@@ -439,14 +445,14 @@ function runTool(loop: Loop, name: string, input: unknown): { content: string; i
       } else {
         ws.ops.push(name === "complete_todo" ? { op: "todo.complete", id } : { op: "todo.reopen", id });
         ws.todos.set(id, { ...t, done: name === "complete_todo" });
-        step(loop, `${name === "complete_todo" ? "完成" : "重新打开"}「${short(t.title)}」`);
+        step(loop, `${name === "complete_todo" ? "标记完成" : "重新打开"}「${short(t.title)}」`);
       }
       return { content: JSON.stringify({ ok: true }) };
     }
     case "save_entry": {
       const { text } = a as z.infer<typeof Args.save_entry>;
       ws.ops.push({ op: "entry.create", text });
-      step(loop, "存成一条记录");
+      step(loop, "保存为记录");
       return { content: JSON.stringify({ ok: true }) };
     }
     case "finish":
@@ -481,7 +487,7 @@ async function runLoop(loop: Loop, opts: {
       output_config: { effort: opts.effort },
     });
     stream.on("streamEvent", (ev) => {
-      if (ev.type === "content_block_start" && ev.content_block.type === "server_tool_use" && !searching) searching = step(loop, "上网查一查", "run");
+      if (ev.type === "content_block_start" && ev.content_block.type === "server_tool_use" && !searching) searching = step(loop, "联网搜索", "run");
     });
     if (opts.onText) {
       let first = true;
@@ -505,7 +511,7 @@ async function runLoop(loop: Loop, opts: {
       if (b.type === "server_tool_use") {
         const q = (b.input as { query?: string }).query;
         loop.meta.tools.push("web_search");
-        step(loop, q ? `上网查「${short(q, 12)}」` : "上网查一查", "done", searching ?? undefined);
+        step(loop, q ? `联网搜索「${short(q, 12)}」` : "联网搜索", "done", searching ?? undefined);
         searching = null;
       }
     }
@@ -542,7 +548,7 @@ export async function runAgent(req: AgentRequest, emit: Emit): Promise<{ result:
   return { result, meta: loop.meta };
 }
 
-async function chatTurn(loop: Loop, req: AgentRequest, history: { role: "user" | "assistant"; content: string }[], label = "想一想"): Promise<AgentResult> {
+async function chatTurn(loop: Loop, req: AgentRequest, history: { role: "user" | "assistant"; content: string }[], label = "生成回复"): Promise<AgentResult> {
   // The API needs alternating turns starting with the user.
   const messages: Msg[] = [];
   for (const m of history) {
@@ -561,7 +567,7 @@ async function chatTurn(loop: Loop, req: AgentRequest, history: { role: "user" |
     onText: (delta) => loop.emit({ t: "text", delta }),
     thinkingLabel: label,
   });
-  return { reply: text || "（我这次没想好怎么回答，换个说法再问我一次？）", ops: loop.ws.ops };
+  return { reply: text || "未能生成回复，请换一种说法再试一次。", ops: loop.ws.ops };
 }
 
 async function capture(loop: Loop, req: AgentRequest): Promise<AgentResult> {
@@ -580,7 +586,7 @@ async function capture(loop: Loop, req: AgentRequest): Promise<AgentResult> {
     effort: "low",
     maxTokens: 6000,
     maxTurns: 5,
-    thinkingLabel: "理解你说的话",
+    thinkingLabel: "分析内容",
   });
 
   // No finish (ran out of turns): keep it as a journal entry rather than lose it.
@@ -594,18 +600,18 @@ async function capture(loop: Loop, req: AgentRequest): Promise<AgentResult> {
   const base = { route, continues: continuesId, reply: finish?.reply ?? "", ops: loop.ws.ops };
 
   if (route === "chat") {
-    const answer = await chatTurn(loop, req, [{ role: "user", content: transcript }], "想想怎么回答");
+    const answer = await chatTurn(loop, req, [{ role: "user", content: transcript }], "生成回复");
     return { ...base, title: title || short(transcript, 12), reply: answer.reply, ops: loop.ws.ops };
   }
   if (route === "pending") {
-    return { ...base, pending: { title: title || "这条先放着", reason: finish?.pending_reason || (req.hint === "todo" ? "没听出要记什么待办。" : "没听出你想记录还是想问什么。") } };
+    return { ...base, pending: { title: title || "未能判断用途", reason: finish?.pending_reason || (req.hint === "todo" ? "未能从内容中识别出待办事项。" : "未能判断这段内容是记录、待办还是提问。") } };
   }
   if (route === "todo") return base;
 
-  const writing = step(loop, "整理成日记", "run");
+  const writing = step(loop, "整理记录", "run");
   const parent = continuesId ? loop.ws.entry(continuesId) : undefined;
   const recent = req.entries.slice(0, 8).map((e) => ({ date: e.date, title: e.title, summary: e.summary }));
   const { analysis } = await analyzeEntry({ text: transcript, prompt: req.prompt, recent, ...(parent ? { thread: { date: parent.date, title: parent.title, summary: parent.summary } } : {}) });
-  step(loop, `整理成日记《${short(analysis.title)}》`, "done", writing);
+  step(loop, `整理记录《${short(analysis.title)}》`, "done", writing);
   return { ...base, analysis };
 }

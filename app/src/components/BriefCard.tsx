@@ -12,7 +12,7 @@ import { nowWall, wall } from "@/lib/zone";
 import { colors, fonts } from "@/lib/theme";
 
 const log = logger("brief");
-const ACTION_LABEL = { tomorrow: "推到明天", done: "已经做完", open: "看看", split: "拆成小步" } as const;
+const ACTION_LABEL = { tomorrow: "推迟到明天", done: "标记完成", open: "查看", split: "拆分步骤" } as const;
 
 // Top of Home: the model's take on today — what to push forward, and gentle
 // follow-ups on to-dos that have been sitting. Falls back to a plain list offline.
@@ -65,7 +65,7 @@ export function BriefCard() {
 
   const toggle = (t: Todo) => {
     const next = completeTodo(t.id);
-    if (!next) toast("完成了", t.title, { label: "撤销", onPress: () => reopenTodo(t.id) });
+    if (!next) toast("已完成", t.title, { label: "撤销", onPress: () => reopenTodo(t.id) });
   };
 
   const act = (n: (typeof nudges)[number]) => {
@@ -73,15 +73,15 @@ export function BriefCard() {
     const t = n.todo!;
     if (n.action === "tomorrow") {
       postponeTodo(t.id);
-      toast("推到明天了", t.title);
+      toast("已推迟到明天", t.title);
     } else if (n.action === "done") toggle(t);
-    else if (n.action === "split") router.push({ pathname: "/record", params: { mode: "todo", prompt: `「${t.title}」可以拆成哪几步？一步一步说给我听` } });
+    else if (n.action === "split") router.push({ pathname: "/record", params: { mode: "todo", prompt: `「${t.title}」可以拆分为哪些步骤？请逐步说明` } });
     else router.push({ pathname: "/todos", params: { focus: t.id } });
   };
 
   const now = nowWall();
   const updated = brief ? wall(brief.at) : null;
-  const headline = brief?.data.headline ?? (today.length ? `今天有 ${today.length} 件事要做` : openCount ? "今天没有到期的事" : "");
+  const headline = brief?.data.headline ?? (today.length ? `今天有 ${today.length} 项待办` : openCount ? "今天没有到期的待办" : "");
   const body = brief?.data.body ?? "";
 
   return (
@@ -100,9 +100,9 @@ export function BriefCard() {
             </Pressable>
           ) : null}
         </View>
-        {headline ? <Text style={{ fontFamily: fonts.serif, fontSize: 20, lineHeight: 27, color: colors.text, marginTop: 8 }}>{headline}</Text> : loading ? <Text style={{ fontSize: 15, color: colors.textSoft, marginTop: 8 }}>正在看看你今天的安排…</Text> : null}
+        {headline ? <Text style={{ fontFamily: fonts.serif, fontSize: 20, lineHeight: 27, color: colors.text, marginTop: 8 }}>{headline}</Text> : loading ? <Text style={{ fontSize: 15, color: colors.textSoft, marginTop: 8 }}>正在生成今日回顾…</Text> : null}
         {body ? <Text style={{ fontSize: 14, lineHeight: 21, color: colors.textSoft, marginTop: 6 }}>{body}</Text> : null}
-        {error && !brief ? <Text style={{ fontSize: 12, color: colors.textFaint, marginTop: 6 }}>回顾暂时没生成：{error}</Text> : null}
+        {error && !brief ? <Text style={{ fontSize: 12, color: colors.textFaint, marginTop: 6 }}>未能生成今日回顾：{error}</Text> : null}
       </View>
 
       {focus.map(({ todo, why }) => (
@@ -129,7 +129,7 @@ export function BriefCard() {
 
       {openCount ? (
         <Pressable onPress={() => { tap(); router.push("/todos"); }} style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4 }}>
-          <Text style={{ flex: 1, fontSize: 13, color: colors.textSoft }}>全部待办 {openCount} 件</Text>
+          <Text style={{ flex: 1, fontSize: 13, color: colors.textSoft }}>全部待办 {openCount} 项</Text>
           <Ionicons name="chevron-forward" size={15} color={colors.textFaint} />
         </Pressable>
       ) : null}

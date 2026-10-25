@@ -11,7 +11,7 @@ export function dayKey(iso: string | Date): string {
 
 export function greeting(d = nowWall()): string {
   const h = d.getHours();
-  if (h < 5) return "夜深了";
+  if (h < 5) return "晚上好";
   if (h < 11) return "早上好";
   if (h < 13) return "中午好";
   if (h < 18) return "下午好";

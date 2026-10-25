@@ -12,8 +12,8 @@ export function MoodLegend({ visible, onClose }: { visible: boolean; onClose: ()
       visible={visible}
       onClose={onClose}
       icon={<Ionicons name="color-palette" size={28} color={colors.primary} />}
-      title="你的情绪印章"
-      body="Murmur 会根据你说的内容推测一种情绪。颜色代表情绪家族，图案随具体情绪变化；日历上每天显示当天的主要情绪。"
+      title="情绪印章"
+      body="Murmur 根据记录内容推测一种情绪。颜色表示情绪类别，图案表示具体情绪；日历上每天显示当天的主要情绪。"
     >
       <View style={{ marginTop: 18 }}>
         {ORDER.map((f, i) => (

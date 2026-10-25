@@ -18,9 +18,9 @@ export default function Pending() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 60, gap: 14 }}>
         <View style={{ flexDirection: "row", gap: 10, padding: 14, borderRadius: radius.md, backgroundColor: colors.cardMuted }}>
           <Ionicons name="information-circle-outline" size={18} color={colors.textSoft} />
-          <Text style={[ui.body, { flex: 1 }]}>没看懂要怎么处理的录音会先放在这里，等你决定存成记录、当成问题问，还是删掉。录音只在这台手机上。</Text>
+          <Text style={[ui.body, { flex: 1 }]}>未能判断用途的录音会暂存在这里，你可以将其保存为记录、作为问题提问或删除。录音只保存在这台设备上。</Text>
         </View>
-        {inbox.length === 0 ? <EmptyState text="都处理完了" /> : inbox.map((p) => (p.kind === "unclear" ? <UnclearCard key={p.id} p={p} /> : <DraftCard key={p.id} p={p} />))}
+        {inbox.length === 0 ? <EmptyState text="没有待确认的录音" /> : inbox.map((p) => (p.kind === "unclear" ? <UnclearCard key={p.id} p={p} /> : <DraftCard key={p.id} p={p} />))}
       </ScrollView>
     </Screen>
   );
@@ -35,11 +35,11 @@ function UnclearCard({ p }: { p: PendingIntent }) {
     <Card>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <Text style={[ui.title, { flex: 1, fontSize: 14 }]}>{shortDate(p.createdAt)} {clockOf(p.createdAt)}</Text>
-        <Text style={ui.faint}>还没保存</Text>
+        <Text style={ui.faint}>未保存</Text>
       </View>
-      <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text, marginTop: 10 }}>{p.title ?? "这条先放着"}</Text>
+      <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text, marginTop: 10 }}>{p.title ?? "未能判断用途"}</Text>
       {p.reason ? <Text style={[ui.body, { fontSize: 15, lineHeight: 23, marginTop: 6 }]}>{p.reason}</Text> : null}
-      {p.prompt ? <Text style={[ui.body, { marginTop: 10 }]}>你在回答：“{p.prompt}”</Text> : null}
+      {p.prompt ? <Text style={[ui.body, { marginTop: 10 }]}>回答的问题：“{p.prompt}”</Text> : null}
       <Pressable onPress={() => { tap(); setOpen(!open); }} style={{ marginTop: 10 }}>
         <Text style={{ fontSize: 15, lineHeight: 23, color: colors.text }} numberOfLines={open ? undefined : 2}>“{p.text}”</Text>
       </Pressable>
@@ -50,10 +50,10 @@ function UnclearCard({ p }: { p: PendingIntent }) {
       ) : null}
       <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 14 }} />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <Action icon="bookmark-outline" label="存成记录" primary onPress={() => { const id = pendingAsNote(p.id); toast("存成记录了", "正在整理…"); if (id) router.push(`/entry/${id}`); }} />
-        <Action icon="chatbubble-ellipses-outline" label="当问题问" onPress={() => { const id = pendingAsChat(p.id); if (id) router.push(`/chats/${id}`); }} />
+        <Action icon="bookmark-outline" label="保存为记录" primary onPress={() => { const id = pendingAsNote(p.id); toast("已保存为记录", "正在整理…"); if (id) router.push(`/entry/${id}`); }} />
+        <Action icon="chatbubble-ellipses-outline" label="作为提问" onPress={() => { const id = pendingAsChat(p.id); if (id) router.push(`/chats/${id}`); }} />
         <View style={{ flex: 1 }} />
-        <Action icon="trash-outline" label="删除" danger onPress={() => { dismissPending(p.id); toast("删掉了"); }} />
+        <Action icon="trash-outline" label="删除" danger onPress={() => { dismissPending(p.id); toast("已删除"); }} />
       </View>
     </Card>
   );
@@ -65,7 +65,7 @@ function DraftCard({ p }: { p: PendingIntent }) {
     <Card onPress={() => router.push(`/confirm/${p.id}`)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
       <Ionicons name="checkmark-done-outline" size={20} color={colors.primary} />
       <View style={{ flex: 1 }}>
-        <Text style={ui.title}>{p.drafts.length ? `${p.drafts.length} 件待办等你确认` : "有事项可能已经做完"}</Text>
+        <Text style={ui.title}>{p.drafts.length ? `${p.drafts.length} 件待办待确认` : "有事项可能已完成"}</Text>
         <Text style={[ui.body, { marginTop: 2 }]} numberOfLines={1}>“{p.text}”</Text>
       </View>
       <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />

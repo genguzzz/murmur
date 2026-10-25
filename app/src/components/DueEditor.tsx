@@ -91,7 +91,7 @@ export function DueEditor({ value, onChange, showRepeat = true }: { value: Due; 
               </Pressable>
             </>
           ) : (
-            <Chip label="加个时间" icon="alarm-outline" active={false} onPress={() => set({ time: defaultTime(value.date) })} />
+            <Chip label="添加时间" icon="alarm-outline" active={false} onPress={() => set({ time: defaultTime(value.date) })} />
           )}
         </View>
       ) : null}

@@ -19,6 +19,13 @@ export interface ClaudeMeta {
 
 export class RefusalError extends Error {}
 
+// How every model-written line reads in the app. Shared by all prompts.
+export const TONE = `## 语气
+- 严谨、清楚、克制、尊重用户，像一个可靠的专业助手，而不是闲聊的朋友。
+- 用准确的陈述句，具体指出事实和依据；不夸张、不煽情、不说教、不评价用户，不用语气词（啦、呀、哦、哈、～）、感叹号和表情符号。
+- 称呼用户为"你"。不确定的事明确说不确定，不编造。
+- 默认简体中文；用户主要说英文时用英文。`;
+
 // One call shape for everything: Sonnet 5 with adaptive thinking,
 // server-side refusal fallback, optional JSON-schema structured output.
 export async function call(opts: {
@@ -102,22 +109,22 @@ const analysisJsonSchema = {
     mood: { type: "string", enum: [...MOODS], description: "最贴近的主要情绪" },
     mood_label: { type: "string", description: "情绪的 2 字中文标签，如 反思、平静、焦虑、兴奋" },
     themes: { type: "array", items: { type: "string" }, description: "1-4 个简短主题标签（2-6 字）" },
-    follow_up: { type: "string", description: "一个温和、具体、开放的追问，帮助用户继续想下去" },
+    follow_up: { type: "string", description: "一个具体、开放、有分寸的问题，针对用户提到的事，帮助他把这件事想清楚" },
     insight_title: { type: "string", description: "≤10 字的洞察标题，像一句判断，如『让规则先于下单』" },
     insight: { type: "string", description: "2-3 句洞察：结合本条和最近记录，指出联系、矛盾或反复出现的问题；第二人称" },
-    reflection: { type: "string", description: "1-2 句，像朋友听完后的一句回应，点出这件事真正的意义（不是复述）" },
+    reflection: { type: "string", description: "1-2 句客观的观察，指出这条记录中值得注意的关键点或意义（不是复述，不评价用户）" },
     action: { type: "string", description: "≤18 字、可执行的下一步，祈使句，如『把风险检查放到每次下单之前』" },
     quote: { type: "string", description: "从原始转写里原样摘录最有代表性的一句或一段（≤80 字），保留口语，不要改写" },
   },
 };
 
 const ANALYZE_SYSTEM = `你是一个私人语音日记应用里的整理助手。用户刚刚录了一段口述（已由语音识别转成文字，可能有错字、口头禅、重复）。
-你的工作：把它整理成一条日记，并给出温和、具体的反馈。
+你的工作：把它整理成一条日记，并给出具体、有依据的反馈。
 原则：
 - 忠实于用户说的内容，不编造，不说教，不给没被要求的建议。
-- 语气像一个细心的朋友：简洁、真诚、不浮夸。
-- 默认使用简体中文；如果用户主要说英文，就用英文输出。
-- 追问只问一个问题，要具体到用户提到的事情。`;
+- 追问只问一个问题，要具体到用户提到的事情。
+
+${TONE}`;
 
 export async function analyzeEntry(input: {
   text: string;
@@ -241,7 +248,7 @@ export async function chat(input: {
 }): Promise<{ reply: string; meta: ClaudeMeta }> {
   const system =
     `你是用户私人语音日记里的对话伙伴。你可以读到用户的日记（见 <journal>），基于这些内容陪用户聊天、回顾、梳理想法。` +
-    `回答简洁自然，像朋友聊天；引用日记时说明是哪天哪条；不知道就直说，不编造日记里没有的内容。默认简体中文。\n\n` +
+    `回答简洁准确；引用日记时说明是哪天哪条；不知道就直说，不编造日记里没有的内容。\n${TONE}\n\n` +
     `<journal>\n${entriesBlock(input.entries, true) || "（还没有日记）"}\n</journal>`;
   const { text, meta } = await call({
     system,

@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StepList } from "@/components/Activity";
-import { Bubble, Card, EmptyState, TopBar, tap, toast } from "@/components/ui";
-import { sendChat, sortedEntries, useStore, type ChatMessage } from "@/lib/store";
+import { Bubble, Card, EmptyState, IconButton, TopBar, tap, toast } from "@/components/ui";
+import { deleteChat, restoreChat, sendChat, sortedEntries, useStore, type ChatMessage } from "@/lib/store";
 import { runUndo, useCanUndo, useRun, watchRun } from "@/lib/runs";
 import { colors, radius } from "@/lib/theme";
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const chat = useStore((s) => s.chats.find((c) => c.id === id));
   const rawEntries = useStore((s) => s.entries);
   const [text, setText] = useState("");
@@ -25,10 +26,10 @@ export default function ChatScreen() {
   const starters = useMemo(() => {
     const recent = sortedEntries(rawEntries).filter((e) => e.status === "done").slice(0, 3);
     return [
-      ...recent.slice(0, 2).map((e) => `聊聊「${e.title}」这件事`),
-      "最近我反复提到的是什么？",
-      "帮我把这周的待办理一理",
-      "帮我回顾一下这周",
+      ...recent.slice(0, 2).map((e) => `回顾「${e.title}」`),
+      "最近反复出现的主题有哪些？",
+      "整理本周的待办",
+      "总结本周的记录",
     ].slice(0, 5);
   }, [rawEntries]);
 
@@ -44,13 +45,16 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <TopBar title={chat.messages.length ? chat.title : "新对话"} />
+      <TopBar
+        title={chat.messages.length ? chat.title : "新对话"}
+        right={chat.messages.length ? <IconButton name="trash-outline" onPress={() => { const c = chat; deleteChat(c.id); router.back(); toast("已删除对话", c.title, { label: "撤销", onPress: () => restoreChat(c) }); }} /> : undefined}
+      />
       {chat.messages.length === 0 ? (
         <View style={{ flex: 1, justifyContent: "center" }}>
           <View style={{ alignItems: "center", marginBottom: 28 }}>
-            <Bubble text="想聊点什么？" />
+            <Bubble text="有什么需要帮忙的？" />
             <Text style={{ color: colors.textSoft, marginTop: 14, textAlign: "center", paddingHorizontal: 40, lineHeight: 20 }}>
-              问问过去的记录，让我改改待办，或者随便问点什么。
+              可以询问过去的记录、调整待办，或提出其他问题。
             </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 18, gap: 10 }} style={{ flexGrow: 0 }}>
@@ -75,7 +79,7 @@ export default function ChatScreen() {
         <TextInput
           value={text}
           onChangeText={setText}
-          placeholder={sending ? "正在回答…" : "说点什么"}
+          placeholder={sending ? "正在回复…" : "输入消息"}
           placeholderTextColor={colors.textFaint}
           multiline
           style={{ flex: 1, maxHeight: 120, minHeight: 44, backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border }}
@@ -84,7 +88,7 @@ export default function ChatScreen() {
           <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
         </Pressable>
       </View>
-      <Text style={{ textAlign: "center", fontSize: 11, color: colors.textFaint, paddingBottom: insets.bottom ? 0 : 6, marginTop: -4 }}>AI 会出错，重要的事以你自己的记录为准。</Text>
+      <Text style={{ textAlign: "center", fontSize: 11, color: colors.textFaint, paddingBottom: insets.bottom ? 0 : 6, marginTop: -4 }}>AI 生成的内容可能有误，重要信息请以你的原始记录为准。</Text>
     </KeyboardAvoidingView>
   );
 }
@@ -128,8 +132,8 @@ function OpsCard({ lines, undoId }: { lines: string[]; undoId?: string }) {
         </View>
       ))}
       {can ? (
-        <Pressable hitSlop={8} onPress={() => { tap(); if (runUndo(undoId!)) { setUndone(true); toast("已撤销", "改动都恢复原样了"); } }} style={{ alignSelf: "flex-start", marginTop: 2 }}>
-          <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13.5 }}>撤销这些改动</Text>
+        <Pressable hitSlop={8} onPress={() => { tap(); if (runUndo(undoId!)) { setUndone(true); toast("已撤销", "相关改动已恢复"); } }} style={{ alignSelf: "flex-start", marginTop: 2 }}>
+          <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13.5 }}>撤销以上改动</Text>
         </Pressable>
       ) : undone ? (
         <Text style={{ fontSize: 12.5, color: colors.textFaint }}>已撤销</Text>

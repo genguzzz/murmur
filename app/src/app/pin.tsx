@@ -33,10 +33,10 @@ export default function PinSetup() {
       <TopBar />
       <PinPad
         key={first === null ? "first" : "confirm"}
-        title={first === null ? "设置密码" : "再输一次"}
-        bubble={first === null ? "设一个 4 位密码" : "确认一下"}
+        title={first === null ? "设置密码" : "确认密码"}
+        bubble={first === null ? "设置 4 位数字密码" : "请再次输入密码"}
         onComplete={onComplete}
-        footer={first === null ? "忘记密码只能删除 App 重装，记录会一起丢失。" : undefined}
+        footer={first === null ? "忘记密码后只能删除并重新安装 App，所有记录将会丢失。" : undefined}
       />
     </View>
   );

@@ -82,7 +82,7 @@ export default function Search() {
               onChangeText={setMeaningQuery}
               onSubmitEditing={() => void runMeaning()}
               returnKeyType="search"
-              placeholder="比如：那些让我睡不着的事"
+              placeholder="例如：让我失眠的事"
               placeholderTextColor={colors.textFaint}
               style={{ height: 46, borderRadius: radius.sm, paddingHorizontal: 12, backgroundColor: colors.cardMuted, color: colors.text, fontSize: 15, borderWidth: 1, borderColor: colors.border }}
             />
@@ -92,7 +92,7 @@ export default function Search() {
             <Ionicons name="sparkles" size={22} color={colors.primary} />
             <View style={{ flex: 1 }}>
               <Text style={[ui.title, { fontSize: 16 }]}>按意思搜索</Text>
-              <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>按感受和想法找记录，不只是匹配字面。</Text>
+              <Text style={[ui.body, { fontSize: 13, marginTop: 2 }]}>按含义查找记录，不限于字面匹配。</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
           </Card>
@@ -102,7 +102,7 @@ export default function Search() {
           <>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.card, borderRadius: radius.md, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border }}>
               <Ionicons name="search" size={18} color={colors.textFaint} />
-              <TextInput value={query} onChangeText={setQuery} placeholder="搜索原文里的字词…" placeholderTextColor={colors.textFaint} style={{ flex: 1, height: 48, fontSize: 15, color: colors.text }} clearButtonMode="while-editing" />
+              <TextInput value={query} onChangeText={setQuery} placeholder="搜索原文中的字词…" placeholderTextColor={colors.textFaint} style={{ flex: 1, height: 48, fontSize: 15, color: colors.text }} clearButtonMode="while-editing" />
             </View>
             <Pressable onPress={() => { tap(); setThemeSheet(true); }} style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.card, borderRadius: radius.md, paddingHorizontal: 14, height: 50, borderWidth: 1, borderColor: theme ? colors.primary : colors.border }}>
               <Ionicons name="pricetag" size={16} color={colors.primary} />
@@ -132,7 +132,7 @@ export default function Search() {
               )}
             />
           ) : (
-            <EmptyState text="没找到意思相近的记录" />
+            <EmptyState text="没有找到意思相近的记录" />
           )
         ) : null
       ) : exact ? (
@@ -144,7 +144,7 @@ export default function Search() {
             renderItem={({ item }) => <EntryCard full entry={item} onPress={() => router.push(`/entry/${item.id}`)} />}
           />
         ) : (
-          <EmptyState text="没找到相关的记录" />
+          <EmptyState text="没有找到相关记录" />
         )
       ) : null}
 

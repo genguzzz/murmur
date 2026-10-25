@@ -198,7 +198,7 @@ async function readState(beforeReady?: () => void): Promise<void> {
         settings: { ...DEFAULT_STATE.settings, ...parsed.settings },
       };
       // A reply that was streaming when the app died won't finish now.
-      state.chats = state.chats.map((c) => (c.messages.some((m) => m.pending) ? { ...c, messages: c.messages.map((m) => (m.pending ? { ...m, pending: false, error: !m.content, content: m.content || "上次没回答完，再问一次吧" } : m)) } : c));
+      state.chats = state.chats.map((c) => (c.messages.some((m) => m.pending) ? { ...c, messages: c.messages.map((m) => (m.pending ? { ...m, pending: false, error: !m.content, content: m.content || "上次回答未完成，请重新提问" } : m)) } : c));
     }
     log.info("state loaded", { entries: state.entries.length, chats: state.chats.length, todos: state.todos.length, inbox: state.inbox.length, hasToken: !!state.settings.token });
   } catch (e) {
@@ -403,21 +403,21 @@ export async function processEntry(id: string): Promise<void> {
     if (e.kind === "voice" && !e.rawText) {
       if (!isWeb && !audioFile(e.audioFile!).exists) {
         log.error("audio file missing", { id, file: e.audioFile });
-        patchEntry(id, { status: "failed", error: "录音文件丢失（旧版本的问题），这条只能删除" });
-        if (!routed) endRun(id, { status: "failed", error: "录音文件丢失" });
+        patchEntry(id, { status: "failed", error: "录音文件已丢失（旧版本问题），这条记录只能删除" });
+        if (!routed) endRun(id, { status: "failed", error: "录音文件已丢失" });
         return;
       }
       patchEntry(id, { status: "transcribing", error: undefined });
-      stepRun(id, { id: "asr", label: "转写语音", state: "run" });
+      stepRun(id, { id: "asr", label: "转写录音", state: "run" });
       const uri = isWeb ? e.audioFile! : audioFile(e.audioFile!).uri;
       const t = await api.transcribe(uri, state.settings.language);
       log.info("transcribed", { id, chars: t.text.length, lang: t.language, dropped: t.droppedSegments, audioSec: t.duration });
       if (!t.text.trim()) {
-        patchEntry(id, { status: "failed", error: "没有识别到说话内容" });
-        if (!routed) endRun(id, { status: "failed", error: "没有识别到说话内容" });
+        patchEntry(id, { status: "failed", error: "未识别到语音内容" });
+        if (!routed) endRun(id, { status: "failed", error: "未识别到语音内容" });
         return;
       }
-      stepRun(id, { id: "asr", label: `转写语音 · ${t.text.length} 字`, state: "done" });
+      stepRun(id, { id: "asr", label: `转写录音 · ${t.text.length} 字`, state: "done" });
       patchEntry(id, { rawText: t.text });
     }
     e = getEntry(id)!;
@@ -543,16 +543,16 @@ async function captureEntry(e: Entry, t0: number) {
     deleteEntry(id);
     finishChatTurn(chatId, res);
     endRun(id, { route, chatId });
-    if (!isWatched(id)) notify({ title: "这是个问题，已转到对话", body: res.title || undefined, actions: [{ label: "打开", path: `/chats/${chatId}` }] });
+    if (!isWatched(id)) notify({ title: "这段内容是提问，已转到对话", body: res.title || undefined, actions: [{ label: "查看对话", path: `/chats/${chatId}` }] });
     return;
   }
 
   if (route === "pending") {
-    const p = res.pending ?? { title: "这条先放着", reason: "没听出你想记录还是想问什么。" };
+    const p = res.pending ?? { title: "未能判断用途", reason: "未能判断这段内容是记录还是提问。" };
     setState((s) => ({ ...s, entries: s.entries.filter((x) => x.id !== id) }));
     addUnclear({ id, createdAt: e.createdAt, source: e.kind, text: e.rawText!, title: p.title, reason: p.reason, audioFile: e.audioFile, durationSec: e.durationSec, prompt: e.prompt });
     endRun(id, { route });
-    notify({ title: "先放进了待确认", body: p.reason, actions: [{ label: "去看看", path: "/pending" }] });
+    notify({ title: "已放入待确认", body: p.reason, actions: [{ label: "查看", path: "/pending" }] });
     return;
   }
 
@@ -563,7 +563,7 @@ async function captureEntry(e: Entry, t0: number) {
     const undo = applied.undoId
       ? registerUndo(() => {
           runUndo(applied.undoId!);
-          addUnclear({ id: newId(), createdAt: e.createdAt, source: e.kind, text: e.rawText!, title: "撤销了的待办", reason: "你撤销了这次的待办改动，原话留在这里。", prompt: e.prompt });
+          addUnclear({ id: newId(), createdAt: e.createdAt, source: e.kind, text: e.rawText!, title: "已撤销的待办", reason: "待办改动已撤销，原始内容保留在这里。", prompt: e.prompt });
         })
       : undefined;
     endRun(id, { route });
@@ -585,7 +585,7 @@ async function captureEntry(e: Entry, t0: number) {
     const actions: NoticeAction[] = [{ label: "查看", path: `/entry/${id}` }];
     if (applied.undoId) actions.unshift({ label: "撤销改动", undo: applied.undoId });
     notify({
-      title: threadId ? "后续整理好了" : "记下了",
+      title: threadId ? "后续记录已整理完成" : "已保存为记录",
       body: [a.title, ...applied.lines].join("\n"),
       actions,
       remind: applied.created.some((t) => t.date),
@@ -661,7 +661,7 @@ function applyOps(ops: api.AgentOp[], source: Todo["source"]): Applied {
       const next = patchTodo(t, o.patch);
       put(next);
       const timed = o.patch.date !== undefined || o.patch.time !== undefined;
-      lines.push(`修改「${next.title}」${timed ? ` → ${next.date ? dueLabel(next) : "不定时间"}` : ""}`);
+      lines.push(`修改「${next.title}」${timed ? ` → ${next.date ? dueLabel(next) : "不设时间"}` : ""}`);
     } else if (o.op === "todo.complete") {
       const t = find(o.id);
       if (!t || t.doneAt) continue;
@@ -686,7 +686,7 @@ function applyOps(ops: api.AgentOp[], source: Todo["source"]): Applied {
   }
   if (before.size) setTodos(() => list);
   const entryIds = notes.map((text) => createTextEntry(text, { routed: true }).id);
-  if (entryIds.length) lines.push(entryIds.length > 1 ? `存了 ${entryIds.length} 条记录` : "存了一条记录");
+  if (entryIds.length) lines.push(entryIds.length > 1 ? `已保存 ${entryIds.length} 条记录` : "已保存 1 条记录");
   const count = (k: string) => ops.filter((o) => o.op === k).length;
   if (ops.length) track("agent_ops", { create: count("todo.create"), update: count("todo.update"), complete: count("todo.complete"), remove: count("todo.delete"), entries: entryIds.length });
   const undoId =
@@ -794,6 +794,11 @@ export function deleteChat(id: string) {
   setState((s) => ({ ...s, chats: s.chats.filter((c) => c.id !== id) }));
 }
 
+// Undo for deleteChat: put the conversation back as it was.
+export function restoreChat(chat: Chat) {
+  setState((s) => (s.chats.some((c) => c.id === chat.id) ? s : { ...s, chats: [chat, ...s.chats] }));
+}
+
 function patchChat(id: string, fn: (c: Chat) => Chat) {
   setState((s) => ({ ...s, chats: s.chats.map((c) => (c.id === id ? fn(c) : c)) }));
 }
@@ -854,7 +859,7 @@ function finishChatTurn(chatId: string, res: api.AgentResult) {
   }));
   endRun(chatId);
   if (applied.lines.length) {
-    notify({ title: applied.lines.length > 1 ? `改了 ${applied.lines.length} 处` : applied.lines[0], body: applied.lines.length > 1 ? applied.lines.join("\n") : undefined, actions: applied.undoId ? [{ label: "撤销", undo: applied.undoId }] : [], remind: applied.created.some((t) => t.date) });
+    notify({ title: applied.lines.length > 1 ? `已更新 ${applied.lines.length} 项` : applied.lines[0], body: applied.lines.length > 1 ? applied.lines.join("\n") : undefined, actions: applied.undoId ? [{ label: "撤销", undo: applied.undoId }] : [], remind: applied.created.some((t) => t.date) });
   }
 }
 
@@ -1094,10 +1099,10 @@ export async function quickAddTodo(text: string): Promise<{ reply: string; lines
   const ops = res.ops.filter((o) => o.op !== "entry.create");
   if (ops.length) {
     const applied = applyOps(ops, "text");
-    return { reply: res.reply || applied.lines[0] || "改好了", lines: applied.lines, undoId: applied.undoId, remind: applied.created.some((t) => t.date) };
+    return { reply: res.reply || applied.lines[0] || "已更新", lines: applied.lines, undoId: applied.undoId, remind: applied.created.some((t) => t.date) };
   }
   const created = addTodos([{ title: text.trim(), note: "", date: "", time: "", repeat: "none", priority: "normal" }], "text");
-  return { reply: "加好了", lines: [], undoId: registerUndo(() => created.forEach((t) => deleteTodo(t.id))), remind: false };
+  return { reply: "已添加", lines: [], undoId: registerUndo(() => created.forEach((t) => deleteTodo(t.id))), remind: false };
 }
 
 // ---------- Home brief ----------

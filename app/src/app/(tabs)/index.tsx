@@ -18,9 +18,9 @@ import { restartToApply, useUpdates } from "@/lib/updates";
 type Info = "followup" | "insights" | "comeback" | "mood" | null;
 
 const INFO: Record<Exclude<Info, null | "mood">, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string }> = {
-  followup: { icon: "mic", title: "追问", body: "根据你最近一条记录提出的问题。随时录一段回答，接着把这件事想下去。" },
-  insights: { icon: "bulb", title: "洞察", body: "Murmur 读完你的记录后，指出其中的联系、矛盾或反复出现的问题，并给一个可以做的下一步。" },
-  comeback: { icon: "return-down-back", title: "回头再看", body: "你固定在首页、或约好时间回来的记录会出现在这里，方便接着想。" },
+  followup: { icon: "mic", title: "追问", body: "根据你最近一条记录提出的问题。录一段语音回答，可以继续梳理这件事。" },
+  insights: { icon: "bulb", title: "洞察", body: "Murmur 读完你的记录后，指出其中的联系、矛盾或反复出现的问题，并给出一个可执行的下一步。" },
+  comeback: { icon: "return-down-back", title: "稍后回看", body: "固定在首页或设置了回看时间的记录会显示在这里。" },
 };
 
 export default function Home() {
@@ -71,15 +71,15 @@ export default function Home() {
         {isUpdatePending ? (
           <Card style={{ marginTop: 18, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.primarySoft }} onPress={() => void restartToApply()}>
             <Ionicons name="sparkles" size={18} color={colors.primary} />
-            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>新版本已就绪，点这里重启生效</Text>
+            <Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>新版本已就绪，轻点以重启生效</Text>
             <Ionicons name="refresh" size={18} color={colors.primary} />
           </Card>
         ) : null}
 
         {!settings.token ? (
           <Card style={{ marginTop: 18, borderColor: colors.primary }} onPress={() => go("/settings")}>
-            <Text style={ui.title}>先连接服务器</Text>
-            <Text style={[ui.body, { marginTop: 4 }]}>在设置里填入访问令牌后，录音才能被转写和整理。</Text>
+            <Text style={ui.title}>未连接服务器</Text>
+            <Text style={[ui.body, { marginTop: 4 }]}>在设置中填写访问令牌后，录音才能转写和整理。</Text>
           </Card>
         ) : null}
 
@@ -88,7 +88,7 @@ export default function Home() {
             <Ionicons name="file-tray-outline" size={19} color={colors.primary} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
-                {inbox.length > 1 ? `${inbox.length} 条录音等你确认` : inbox[0].kind === "unclear" ? (inbox[0].title ?? "有一条录音等你确认") : "有待办等你确认"}
+                {inbox.length > 1 ? `${inbox.length} 条录音待确认` : inbox[0].kind === "unclear" ? (inbox[0].title ?? "1 条录音待确认") : "有待办事项待确认"}
               </Text>
               <Text style={[ui.faint, { marginTop: 2 }]} numberOfLines={1}>“{inbox[0].text}”</Text>
             </View>
@@ -100,11 +100,11 @@ export default function Home() {
 
         {comeBack.length ? (
           <>
-            <SectionTitle icon="return-down-back" title="回头再看" onInfo={() => setInfo("comeback")} />
+            <SectionTitle icon="return-down-back" title="稍后回看" onInfo={() => setInfo("comeback")} />
             <View style={{ gap: 10 }}>
               {comeBack.slice(0, 3).map((e) => (
                 <Card key={e.id} onPress={() => go(`/entry/${e.id}`)}>
-                  <Text style={ui.faint}>{e.keepOnHome ? "固定在首页" : "约好今天回来"}</Text>
+                  <Text style={ui.faint}>{e.keepOnHome ? "固定在首页" : "今天回看"}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
                     <Text style={[ui.title, { flex: 1 }]} numberOfLines={1}>{e.title}</Text>
                     <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
@@ -123,7 +123,7 @@ export default function Home() {
               <EntryCard entry={latest} onPress={() => go(`/entry/${latest.id}`)} />
             ) : (
               <Card muted>
-                <Text style={ui.body}>还没有记录。点下面的「录一段」随便说点什么：日记会被整理好，「提醒我…」会变成待办，问我问题会直接进对话。</Text>
+                <Text style={ui.body}>还没有记录。轻点下方的「录一段」开始录音：日记会整理成记录，「提醒我…」会生成待办，提问会转到对话。</Text>
               </Card>
             )}
           </>
@@ -166,7 +166,7 @@ export default function Home() {
 
         <Card muted style={{ marginTop: 14, flexDirection: "row", alignItems: "center", gap: 10 }} onPress={() => go("/insights")}>
           <Ionicons name="sparkles" size={18} color={colors.primary} />
-          <Text style={{ flex: 1, color: colors.text, fontWeight: "500" }}>看看所有记录里的规律</Text>
+          <Text style={{ flex: 1, color: colors.text, fontWeight: "500" }}>查看全部记录中的规律</Text>
           <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
         </Card>
 
@@ -191,7 +191,7 @@ export default function Home() {
           </Card>
         ) : (
           <Card muted>
-            <Text style={[ui.body, { textAlign: "center" }]}>记录多了以后，这里会翻出过去某天的你。</Text>
+            <Text style={[ui.body, { textAlign: "center" }]}>记录积累后，这里会显示过去某天的记录。</Text>
           </Card>
         )}
 
