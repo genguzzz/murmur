@@ -6,7 +6,7 @@ import { MoodStamp } from "@/components/MoodStamp";
 import type { Entry } from "@/lib/store";
 import { useRun } from "@/lib/runs";
 import { timeAgo, clockOf } from "@/lib/format";
-import { colors, MOOD_LABELS } from "@/lib/theme";
+import { colors } from "@/lib/theme";
 
 const clockTime = clockOf;
 
@@ -55,7 +55,6 @@ export function EntryCard({ entry, onPress, full }: { entry: Entry; onPress: () 
           </View>
           <Text style={[ui.faint, { marginTop: 4, fontSize: 13 }]}>
             {clockTime(entry.createdAt)}
-            {entry.moodLabel || entry.mood ? ` · ${entry.moodLabel ?? MOOD_LABELS[entry.mood!]}` : ""}
           </Text>
         </View>
       </View>
