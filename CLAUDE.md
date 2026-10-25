@@ -52,6 +52,7 @@ Personal voice journal + to-do assistant. `app/` is Expo (SDK 58, RN 0.88, Expo 
 - When the agent can't tell a time, `create_todo` carries `ask` (question + options). The to-do row shows it as chips, plus 不设时间; any date/time edit clears it.
 - Prompts live next to their schemas: `server/src/agent.ts`, `claude.ts` and `todos.ts` (`TIME_RULES`/`ASK_RULES` are shared). They are Chinese system prompts with field descriptions; interactive calls use low effort. Validate every id or index the model returns against what you sent.
 - Reminders are local notifications rebuilt from scratch by `syncTodoReminders` after any change. iOS caps pending notifications at 64; we schedule ≤40. Notices with `remind` trigger `ensureReminderPermission()`.
+- Timed to-dos carry `lead` (minutes of heads-up, chosen by the agent per task; `leadOf()` defaults to 10). `syncTodoReminders` schedules an extra `-lead` notification; `components/TodoLive.tsx` shows a `todo` Live Activity counting down to the due time once the window opens. ActivityKit can only start an activity while the app runs (no push entitlement), so it syncs on foreground/background, every minute and on reminders. Badge on the 待办 tab: always pass `badgeValue` via `unstable_nativeProps` ("" for zero); dropping the prop leaves the old value on iOS.
 - Insights (`/insights`) refresh by themselves when stale (`insightsSignature`), on opening and in the background after new entries.
 
 ## Traps already hit

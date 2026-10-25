@@ -217,6 +217,7 @@ export interface AgentTodoFields {
   time: string;
   repeat: AgentRepeat;
   priority: "normal" | "high";
+  lead?: number;
 }
 
 export type AgentOp =
@@ -250,7 +251,7 @@ export interface AgentRequest {
   tz: string;
   name?: string;
   defaults: { morning: string; evening: string };
-  todos: { id: string; title: string; note?: string; date?: string; time?: string; repeat: AgentRepeat; priority: "normal" | "high"; done: boolean }[];
+  todos: { id: string; title: string; note?: string; date?: string; time?: string; repeat: AgentRepeat; priority: "normal" | "high"; lead?: number; done: boolean }[];
   entries: { id: string; date: string; title: string; summary: string; mood?: string; themes?: string[]; text?: string }[];
   transcript?: string;
   source?: "voice" | "text";

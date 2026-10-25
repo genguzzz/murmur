@@ -31,10 +31,13 @@ export default function TabsLayout() {
           <NativeTabs.Trigger.Icon sf={{ default: "house", selected: "house.fill" }} md="home" />
           <NativeTabs.Trigger.Label>首页</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="todos">
+        {/* badgeValue is always passed: dropping the prop leaves iOS showing the last
+            value, so 0 must be an explicit empty string to clear it. */}
+        <NativeTabs.Trigger name="todos" unstable_nativeProps={{ badgeValue: badge ? (badge > 99 ? "99+" : String(badge)) : "" }}>
           <NativeTabs.Trigger.Icon sf={{ default: "checklist", selected: "checklist.checked" }} md="checklist" />
           <NativeTabs.Trigger.Label>待办</NativeTabs.Trigger.Label>
           {badge ? <NativeTabs.Trigger.Badge>{badge > 99 ? "99+" : String(badge)}</NativeTabs.Trigger.Badge> : null}
+
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="entries">
           <NativeTabs.Trigger.Icon sf={{ default: "book", selected: "book.fill" }} md="menu_book" />

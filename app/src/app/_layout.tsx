@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NoticeBridge, RunPill } from "@/components/Activity";
 import { DrawerHost } from "@/components/Drawer";
+import { TodoLiveSync } from "@/components/TodoLive";
 import { LockScreen } from "@/components/LockScreen";
 import { Mascot } from "@/components/Mascot";
 import { PermissionHost } from "@/components/PermissionPrompt";
@@ -112,6 +113,7 @@ export default function RootLayout() {
         ) : null}
         {loaded ? <DrawerHost /> : null}
         {loaded ? <NoticeBridge /> : null}
+        {loaded ? <TodoLiveSync /> : null}
         {loaded ? <RunPill /> : null}
         {loaded ? <ToastHost /> : null}
         {loaded ? <PermissionHost /> : null}

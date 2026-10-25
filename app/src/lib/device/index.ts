@@ -13,5 +13,5 @@ export { liveTranscribe, speak, stopSpeaking, type LiveTranscription } from "./s
 export { isOnline, keepAwake, locale, onNetworkChange, openInApp, releaseAwake } from "./system";
 export { backgroundStatus, registerBackgroundRefresh } from "./background";
 export { installQuickActions } from "./quickActions";
-export { clearStaleLiveActivities, endLivePlayback, endLiveRecording, livePlayback, liveRecording, liveSupported } from "./live";
+export { clearStaleLiveActivities, endLivePlayback, endLiveRecording, endLiveTodo, livePlayback, liveRecording, liveSupported, liveTodo } from "./live";
 export { kv, openDatabaseSync } from "./kv";

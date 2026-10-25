@@ -4,7 +4,7 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { logger } from "./log";
-import { dueAt, parseDate, sortTodos, today, type Todo } from "./todo";
+import { dueAt, leadLabel, leadOf, parseDate, sortTodos, today, type Todo } from "./todo";
 import { instantOf, nowWall } from "./zone";
 
 const log = logger("notify");
@@ -24,7 +24,11 @@ export interface CheckinPrefs {
 export function installNotificationHandler() {
   if (!enabled) return;
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
+    // To-do reminders also sound (and so vibrate) while the app is open; check-ins stay quiet.
+    handleNotification: async (n) => {
+      const isTodo = !!(n.request.content.data as { todoId?: string } | undefined)?.todoId;
+      return { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: isTodo, shouldSetBadge: false };
+    },
   });
 }
 
@@ -157,13 +161,29 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
       const { hour, minute } = local;
       const content: Notifications.NotificationContentInput = {
         title: t.title,
-        body: t.time ? (t.note || "已到提醒时间") : (t.note || "今天的待办"),
+        body: t.time ? `${t.time} · ${t.note || "已到时间"}` : (t.note || "今天的待办"),
         sound: "default",
+        // Breaks through Focus where the system allows it; otherwise a normal banner.
+        interruptionLevel: "timeSensitive",
         data: { route: "/todos", todoId: t.id },
       };
+      // Heads-up before a timed to-do, as far ahead as the agent judged it needs.
+      const lead = leadOf(t);
+      const leadContent: Notifications.NotificationContentInput = {
+        ...content,
+        title: `${leadLabel(lead)}后：${t.title}`,
+        body: `${t.time} 到期${t.note ? ` · ${t.note}` : ""}`,
+        data: { route: "/todos", todoId: t.id, lead: true },
+      };
       const T = Notifications.SchedulableTriggerInputTypes;
-      const triggers: { id: string; trigger: Notifications.NotificationTriggerInput }[] = [];
-      if (t.repeat === "daily") triggers.push({ id: t.id, trigger: { type: T.DAILY, hour, minute } });
+      const triggers: { id: string; lead?: boolean; trigger: Notifications.NotificationTriggerInput }[] = [];
+      if (t.repeat === "daily") {
+        triggers.push({ id: t.id, trigger: { type: T.DAILY, hour, minute } });
+        if (lead) {
+          const m = (((hour * 60 + minute - lead) % 1440) + 1440) % 1440;
+          triggers.push({ id: `${t.id}-lead`, lead: true, trigger: { type: T.DAILY, hour: Math.floor(m / 60), minute: m % 60 } });
+        }
+      }
       else if (t.repeat === "weekdays") {
         // Mon–Fri in the app zone; shift if the zone difference crosses midnight.
         const delta = (local.weekday - (parseDate(t.date!).getDay() + 1) + 7) % 7;
@@ -180,9 +200,11 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
         if (at <= now && !t.time && t.date === today(now) && now.getHours() < 21) at.setTime(now.getTime() + 60_000);
         if (at <= now) continue;
         triggers.push({ id: t.id, trigger: { type: T.DATE, date: instantOf(at) } });
+        const early = new Date(at.getTime() - lead * 60_000);
+        if (lead && early > now) triggers.push({ id: `${t.id}-lead`, lead: true, trigger: { type: T.DATE, date: instantOf(early) } });
       }
       for (const x of triggers) {
-        await Notifications.scheduleNotificationAsync({ identifier: `${TODO_PREFIX}${x.id}`, content, trigger: x.trigger });
+        await Notifications.scheduleNotificationAsync({ identifier: `${TODO_PREFIX}${x.id}`, content: x.lead ? leadContent : content, trigger: x.trigger });
         count += 1;
       }
     }
@@ -190,4 +212,15 @@ async function rebuildTodoReminders(todos: Todo[], allDayTime: string) {
   } catch (e) {
     log.error("todo reminder sync failed", e);
   }
+}
+
+// A to-do reminder arrived while the app is open (the banner and sound come from the
+// handler above); lets the UI add a haptic and refresh the countdown.
+export function onTodoReminder(fn: (todoId: string, lead: boolean) => void): () => void {
+  if (!enabled) return () => {};
+  const sub = Notifications.addNotificationReceivedListener((n) => {
+    const data = n.request.content.data as { todoId?: string; lead?: boolean } | undefined;
+    if (data?.todoId) fn(data.todoId, !!data.lead);
+  });
+  return () => sub.remove();
 }

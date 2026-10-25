@@ -19,6 +19,7 @@ export interface Todo {
   postponed?: number;
   source?: "voice" | "text";
   ask?: { question: string; options: DraftOption[] }; // the agent's open question about the time
+  lead?: number; // minutes of heads-up before a timed to-do (AI-chosen; undefined = 10, 0 = none)
 }
 
 export interface DraftOption {
@@ -135,6 +136,18 @@ export function nextOccurrence(t: Todo, now = nowWall()): string {
   d = step();
   if (t.repeat === "weekdays") while ([0, 6].includes(parseDate(d).getDay())) d = addDays(d, 1);
   return d;
+}
+
+// Heads-up before a timed to-do, in minutes (the agent picks it; 10 if it didn't).
+export function leadOf(t: Pick<Todo, "time" | "lead">): number {
+  return t.time ? (t.lead ?? 10) : 0;
+}
+
+export function leadLabel(min: number): string {
+  if (min <= 0) return "不提前";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h ? (m ? `${h} 小时 ${m} 分钟` : `${h} 小时`) : `${m} 分钟`;
 }
 
 export function sortTodos(list: Todo[], allDayTime: string): Todo[] {

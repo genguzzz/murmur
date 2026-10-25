@@ -7,9 +7,10 @@ import MurmurLive, { type LiveState } from "../../../modules/murmur-live";
 import { log } from "./core";
 import { track } from "../track";
 
-type Kind = "record" | "play";
-const current: Record<Kind, string | null> = { record: null, play: null };
-const lastState: Record<Kind, LiveState | null> = { record: null, play: null };
+type Kind = "record" | "play" | "todo";
+const current: Record<Kind, string | null> = { record: null, play: null, todo: null };
+const lastState: Record<Kind, LiveState | null> = { record: null, play: null, todo: null };
+const todoShown = { id: "", due: 0 };
 
 export function liveSupported(): boolean {
   if (Platform.OS !== "ios" || !MurmurLive) return false;
@@ -84,6 +85,29 @@ export function livePlayback(opts: { title: string; subtitle: string; positionSe
 
 export function endLivePlayback() {
   return finish("play", null, true);
+}
+
+// ---------- upcoming to-do ----------
+
+// Counts down to the due time; the progress bar fills over the heads-up window.
+export function liveTodo(opts: { todoId: string; title: string; subtitle: string; startSec: number; dueSec: number }) {
+  if (todoShown.id === opts.todoId && todoShown.due === opts.dueSec && current.todo) return Promise.resolve();
+  todoShown.id = opts.todoId;
+  todoShown.due = opts.dueSec;
+  return push("todo", {
+    mode: "todo",
+    title: opts.title,
+    subtitle: opts.subtitle,
+    anchor: opts.startSec,
+    elapsed: 0,
+    duration: Math.max(60, opts.dueSec - opts.startSec),
+  });
+}
+
+export function endLiveTodo() {
+  todoShown.id = "";
+  todoShown.due = 0;
+  return finish("todo", null, true);
 }
 
 // On launch: drop activities a crash or force-quit left on screen.

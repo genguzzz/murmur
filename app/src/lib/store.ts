@@ -484,6 +484,7 @@ function agentBase(excludeEntry?: string): Omit<api.AgentRequest, "mode"> {
     ...(t.time ? { time: t.time } : {}),
     repeat: t.repeat,
     priority: t.priority,
+    ...(t.lead !== undefined ? { lead: t.lead } : {}),
     done: !!t.doneAt,
   }));
   let budget = 120_000;
@@ -600,6 +601,7 @@ function patchTodo(t: Todo, p: Partial<api.AgentTodoFields>): Todo {
   if (p.title?.trim()) next.title = p.title.trim();
   if (p.note !== undefined) next = p.note.trim() ? { ...next, note: p.note.trim() } : (({ note: _n, ...rest }) => rest)(next);
   if (p.priority) next.priority = p.priority;
+  if (p.lead !== undefined) next.lead = p.lead;
   if (p.date !== undefined) {
     if (p.date) next.date = p.date;
     else {
@@ -646,6 +648,7 @@ function applyOps(ops: api.AgentOp[], source: Todo["source"]): Applied {
         ...(d.date && d.time ? { time: d.time } : {}),
         repeat: d.date ? d.repeat : "none",
         priority: d.priority,
+        ...(d.date && d.time && d.lead !== undefined ? { lead: d.lead } : {}),
         createdAt: at,
         source,
         ...(o.ask ? { ask: o.ask } : {}),

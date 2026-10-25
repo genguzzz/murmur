@@ -5,7 +5,7 @@ import { DueEditor, type Due } from "./DueEditor";
 import { ensureReminderPermission } from "./PermissionPrompt";
 import { tap, toast } from "./ui";
 import { deleteTodo, postponeTodo, updateTodo } from "@/lib/store";
-import { dueLabel, type Todo } from "@/lib/todo";
+import { dueLabel, leadLabel, leadOf, type Todo } from "@/lib/todo";
 import { colors, radius } from "@/lib/theme";
 
 // Edit a to-do in a native page sheet. Changes save when the sheet closes.
@@ -14,6 +14,9 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
   const [note, setNote] = useState(todo.note ?? "");
   const [due, setDue] = useState<Due>({ date: todo.date ?? "", time: todo.time ?? "", repeat: todo.repeat });
   const [high, setHigh] = useState(todo.priority === "high");
+  const [lead, setLead] = useState(() => leadOf({ time: todo.time || "00:00", lead: todo.lead }));
+  // The agent's choice stays in the list even if it isn't one of the presets.
+  const leadChoices = [...new Set([0, 5, 10, 15, 30, 60, 120, lead])].sort((a, b) => a - b);
 
   const save = () => {
     const patch: Partial<Todo> = {
@@ -23,6 +26,7 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
       time: (due.date && due.time) || undefined,
       repeat: due.date ? due.repeat : "none",
       priority: high ? "high" : "normal",
+      ...(lead !== leadOf({ time: todo.time || "00:00", lead: todo.lead }) ? { lead } : {}),
     };
     const changed = (Object.keys(patch) as (keyof Todo)[]).some((k) => patch[k] !== todo[k]);
     if (changed) {
@@ -66,6 +70,20 @@ export function TodoSheet({ todo, onClose }: { todo: Todo; onClose: () => void }
             <Label icon="calendar-outline" text={due.date ? `提醒：${dueLabel(due)}` : "设置时间"} />
             <DueEditor value={due} onChange={setDue} />
           </View>
+
+          {due.date && due.time ? (
+            <View>
+              <Label icon="notifications-outline" text={`提前提醒：${leadLabel(lead)}`} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {leadChoices.map((m) => (
+                  <Pressable key={m} onPress={() => { tap(); setLead(m); }} style={{ paddingHorizontal: 13, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: m === lead ? colors.primary : colors.border, backgroundColor: m === lead ? colors.primarySoft : "transparent" }}>
+                    <Text style={{ fontSize: 13.5, fontWeight: "600", color: m === lead ? colors.primary : colors.textSoft }}>{m ? leadLabel(m) : "不提前"}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <Text style={{ fontSize: 12, color: colors.textFaint, marginTop: 8 }}>到时会先发一条提醒，并在灵动岛和锁屏显示倒计时。</Text>
+            </View>
+          ) : null}
 
           <Pressable onPress={() => { tap(); setHigh(!high); }} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <Ionicons name={high ? "flag" : "flag-outline"} size={19} color={high ? colors.danger : colors.textSoft} />

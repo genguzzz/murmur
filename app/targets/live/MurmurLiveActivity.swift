@@ -23,6 +23,7 @@ private extension MurmurActivityAttributes.ContentState {
   var end: Date { Date(timeIntervalSince1970: anchor + max(duration, 1)) }
   var tint: Color { isRecording ? coral : amber }
   var symbol: String {
+    if mode == "todo" { return "bell.fill" }
     if isPaused { return "pause.fill" }
     return isRecording ? "mic.fill" : "waveform"
   }

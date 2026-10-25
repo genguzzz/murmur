@@ -6,7 +6,7 @@ import Foundation
 
 struct MurmurActivityAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
-    // "recording" | "recordingPaused" | "playing" | "playbackPaused"
+    // "recording" | "recordingPaused" | "playing" | "playbackPaused" | "todo" (counts down to a due time)
     var mode: String
     var title: String
     var subtitle: String
@@ -19,6 +19,6 @@ struct MurmurActivityAttributes: ActivityAttributes {
     var duration: Double
   }
 
-  // "record" | "play"
+  // "record" | "play" | "todo"
   var kind: String
 }
